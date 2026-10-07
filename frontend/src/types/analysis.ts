@@ -2,6 +2,12 @@
  * Shared TypeScript types for AI Video Agent
  */
 
+export interface TranscriptSegment {
+  text: string;
+  start: number;
+  end: number;
+}
+
 export interface AnalysisData {
   job_id?: string;
   title: string;
@@ -11,6 +17,10 @@ export interface AnalysisData {
   key_decisions?: string;
   open_questions?: string;
   transcript?: string;
+  segments?: TranscriptSegment[];
+  transcript_source?: 'captions' | 'whisper' | 'sarvam' | string;
+  video_id?: string;
+  duration_seconds?: number;
   metadata?: {
     duration?: number;
     pages?: number;
