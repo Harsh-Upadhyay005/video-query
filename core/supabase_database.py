@@ -270,6 +270,94 @@ class SupabaseDatabaseManager:
             "processed_at": datetime.now().isoformat()
         })
 
+    def save_analysis(self, analysis_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Save or update an analysis record in the analyses table.
+        
+        Args:
+            analysis_data: Dictionary matching analyses table columns
+            
+        Returns:
+            Inserted/updated row dictionary if successful, None otherwise
+        """
+        if not self.client.is_available:
+            return None
+        
+        try:
+            db = self.client.get_database()
+            data = {
+                "user_id": analysis_data.get("user_id", "guest"),
+                "source_type": analysis_data.get("source_type", "youtube"),
+                "source_ref": analysis_data.get("source_ref"),
+                "video_id": analysis_data.get("video_id"),
+                "title": analysis_data.get("title"),
+                "transcript": analysis_data.get("transcript"),
+                "transcript_source": analysis_data.get("transcript_source"),
+                "summary": analysis_data.get("summary"),
+                "action_items": analysis_data.get("action_items"),
+                "key_decisions": analysis_data.get("key_decisions"),
+                "open_questions": analysis_data.get("open_questions"),
+                "status": analysis_data.get("status", "completed"),
+                "language": analysis_data.get("language", "english"),
+                "duration_seconds": analysis_data.get("duration_seconds"),
+                "job_id": analysis_data.get("job_id"),
+                "updated_at": datetime.now().isoformat()
+            }
+            if "id" in analysis_data:
+                data["id"] = analysis_data["id"]
+                
+            response = db.table("analyses").upsert(data, on_conflict="job_id").execute()
+            if response.data:
+                logger.info(f"Saved analysis record for job {analysis_data.get('job_id')}")
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to save analysis record in Supabase: {e}")
+            return None
+
+    def get_analysis_by_id(self, analysis_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an analysis by its UUID."""
+        if not self.client.is_available:
+            return None
+        try:
+            db = self.client.get_database()
+            response = db.table("analyses").select("*").eq("id", analysis_id).limit(1).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.warning(f"Failed to fetch analysis {analysis_id}: {e}")
+            return None
+
+    def get_analysis_by_job_id(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an analysis by its job_id."""
+        if not self.client.is_available:
+            return None
+        try:
+            db = self.client.get_database()
+            response = db.table("analyses").select("*").eq("job_id", job_id).limit(1).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.warning(f"Failed to fetch analysis for job {job_id}: {e}")
+            return None
+
+    def list_user_analyses(self, user_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """List analyses for a specific user."""
+        if not self.client.is_available:
+            return []
+        try:
+            db = self.client.get_database()
+            response = (
+                db.table("analyses")
+                .select("id, user_id, source_type, source_ref, video_id, title, summary, status, created_at, duration_seconds")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .range(offset, offset + limit - 1)
+                .execute()
+            )
+            return response.data or []
+        except Exception as e:
+            logger.warning(f"Failed to list analyses for user {user_id}: {e}")
+            return []
+
 
 # Global instance
 _database_manager: Optional[SupabaseDatabaseManager] = None

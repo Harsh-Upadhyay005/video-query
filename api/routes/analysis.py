@@ -61,6 +61,10 @@ class AnalysisResult(BaseModel):
     action_items: str
     key_decisions: str
     open_questions: str
+    segments: Optional[list] = None
+    transcript_source: Optional[str] = None
+    video_id: Optional[str] = None
+    duration_seconds: Optional[float] = None
 
 
 @router.post("/analyze", response_model=AnalysisResponse)
@@ -97,8 +101,10 @@ async def analyze_video(
             "error": None
         }
         
+        user_id = current_user.id if current_user else "guest"
+
         # Start processing in background
-        background_tasks.add_task(process_analysis_with_progress, job_id, validated_source, language)
+        background_tasks.add_task(process_analysis_with_progress, job_id, validated_source, language, user_id)
         
         return {
             "job_id": job_id,
@@ -114,7 +120,7 @@ async def analyze_video(
         raise HTTPException(status_code=500, detail="Failed to start analysis")
 
 
-async def process_analysis_with_progress(job_id: str, source: str, language: str):
+async def process_analysis_with_progress(job_id: str, source: str, language: str, user_id: str = "guest"):
     """
     NOTE: This runs as a BackgroundTask. Heavy pipeline work is offloaded
     to a thread via asyncio.to_thread to avoid blocking the event loop.
@@ -125,6 +131,7 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
         job_id: Unique job identifier
         source: Validated source path/URL
         language: Validated language
+        user_id: Authenticated user ID or 'guest'
     """
     def update_progress(stage: str, message: str, progress: int = None):
         """Update progress in store."""
@@ -173,7 +180,11 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
             "job_id": job_id,
             "type": ui_type,
             "source_type": source_type,
-            "stage_statuses": stage_statuses  # Include stage status information
+            "stage_statuses": stage_statuses,
+            "segments": result.get("segments", []),
+            "transcript_source": result.get("transcript_source"),
+            "video_id": result.get("video_id"),
+            "duration_seconds": result.get("duration_seconds")
         }
         
         # Determine final status
@@ -197,6 +208,33 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
                 "message": "Analysis complete!",
                 "result": json_safe_result
             })
+        
+        # Persist analysis to Supabase if configured
+        try:
+            from core.supabase_database import get_database_manager
+            from core.supabase_client import is_supabase_configured
+            
+            if is_supabase_configured():
+                db_manager = get_database_manager()
+                db_manager.save_analysis({
+                    "user_id": user_id,
+                    "source_type": source_type,
+                    "source_ref": source,
+                    "video_id": result.get("video_id"),
+                    "title": result.get("title"),
+                    "transcript": result.get("segments") or result.get("transcript"),
+                    "transcript_source": result.get("transcript_source"),
+                    "summary": result.get("summary"),
+                    "action_items": result.get("action_items"),
+                    "key_decisions": result.get("key_decisions"),
+                    "open_questions": result.get("open_questions"),
+                    "status": "failed" if has_critical_failure else "completed",
+                    "language": language,
+                    "duration_seconds": result.get("duration_seconds"),
+                    "job_id": job_id,
+                })
+        except Exception as e:
+            logger.warning(f"Failed to persist analysis to Supabase: {e}")
         
         logger.info(f"[Job {job_id}] Completed")
         
@@ -428,13 +466,16 @@ async def upload_and_analyze(
             "error": None
         }
         
+        user_id = current_user.id if current_user else "guest"
+
         # Start processing in background
         background_tasks.add_task(
             process_uploaded_file_with_progress,
             job_id,
             file_path,
             validated_language,
-            file_manager
+            file_manager,
+            user_id
         )
         
         return {
@@ -455,7 +496,8 @@ async def process_uploaded_file_with_progress(
     job_id: str,
     file_path: str,
     language: str,
-    file_manager
+    file_manager,
+    user_id: str = "guest"
 ):
     """
     Process uploaded file with real-time progress updates.
@@ -465,6 +507,7 @@ async def process_uploaded_file_with_progress(
         file_path: Path to uploaded file
         language: Validated language
         file_manager: FileManager instance for cleanup
+        user_id: Authenticated user ID or 'guest'
     """
     def update_progress(stage: str, message: str, progress: int = None):
         """Update progress in store."""
@@ -502,6 +545,10 @@ async def process_uploaded_file_with_progress(
             "job_id": job_id,
             "type": ui_type,
             "source_type": source_type,
+            "segments": result.get("segments", []),
+            "transcript_source": result.get("transcript_source"),
+            "video_id": result.get("video_id"),
+            "duration_seconds": result.get("duration_seconds")
         }
         
         # Store result
@@ -524,6 +571,22 @@ async def process_uploaded_file_with_progress(
                 logger.info(f"Saving results to Supabase: {job_id}")
                 db_manager = get_database_manager()
                 db_manager.save_processing_result(job_id, json_safe_result)
+                db_manager.save_analysis({
+                    "user_id": user_id,
+                    "source_type": source_type,
+                    "source_ref": file_path,
+                    "title": result.get("title"),
+                    "transcript": result.get("segments") or result.get("transcript"),
+                    "transcript_source": result.get("transcript_source"),
+                    "summary": result.get("summary"),
+                    "action_items": result.get("action_items"),
+                    "key_decisions": result.get("key_decisions"),
+                    "open_questions": result.get("open_questions"),
+                    "status": "completed",
+                    "language": language,
+                    "duration_seconds": result.get("duration_seconds"),
+                    "job_id": job_id,
+                })
         except Exception as e:
             logger.warning(f"Failed to save results to Supabase: {e}")
         

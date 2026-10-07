@@ -24,7 +24,7 @@ from core.security import perform_security_check
 from core.logger import get_logger
 from core.exceptions import AIVideoAgentException
 from core.resource_manager import cleanup_on_shutdown
-from api.routes import analysis, health, chat, account
+from api.routes import analysis, health, chat, account, share
 
 logger = get_logger(__name__)
 
@@ -231,6 +231,7 @@ app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # /api/v1/
 app.include_router(analysis.router, prefix="/api/v1", tags=["Analysis"])
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
 app.include_router(account.router, prefix="/api/v1", tags=["Account"])
+app.include_router(share.router, prefix="/api/v1", tags=["Share"])
 
 
   
