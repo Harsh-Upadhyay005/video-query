@@ -24,6 +24,8 @@ from typing import Optional, Callable, Dict, Any, List
 
 from core.source_types import SourceType, ProcessingMetadata, IngestionResult
 from core.stt_service import get_stt_service
+from core.caption_service import get_caption_service
+from core.video_cache import get_video_cache, parse_video_id, CachedTranscript
 from core.logger import get_logger
 from utils.audio_processor import process_input, download_youtube_audio
 
@@ -32,17 +34,19 @@ logger = get_logger(__name__)
 
 class AudioPipeline:
     """
-    Audio/Video ingestion pipeline - STT and indexing only.
+    Audio/Video ingestion pipeline - STT, Captions and indexing only.
     
-    CRITICAL: This pipeline uses STT (audio → text) but does NOT use LLM (text → reasoning).
-    Audio/video does not contain text, so we convert speech to text via STT.
+    CRITICAL: This pipeline uses Captions / STT (audio → text) but does NOT use LLM (text → reasoning).
+    Audio/video does not contain text, so we convert speech to text via Captions or STT.
     Then we index the transcript for RAG.
     """
     
     def __init__(self):
         """Initialize audio pipeline."""
         self.stt_service = get_stt_service()
-        logger.info("[AudioPipeline] Initialized - STT + indexing only (no LLM analysis)")
+        self.caption_service = get_caption_service()
+        self.video_cache = get_video_cache()
+        logger.info("[AudioPipeline] Initialized - Caption-first + STT + indexing (no LLM analysis)")
     
     def ingest_audio(
         self,
@@ -87,6 +91,52 @@ class AudioPipeline:
         if progress_callback:
             progress_callback("audio_processing", "Starting audio processing...", 5)
         
+        video_id = parse_video_id(source) if source_type == SourceType.YOUTUBE else None
+
+        # FAST PATH: Caption-first retrieval for YouTube videos
+        if source_type == SourceType.YOUTUBE and video_id:
+            logger.info(f"[AudioPipeline] Checking caption-first path for YouTube video_id={video_id}")
+            if progress_callback:
+                progress_callback("captions", "Checking for captions and cached transcript...", 8)
+            
+            caption_res = self.caption_service.fetch_transcript(source, language=language)
+            if caption_res:
+                logger.info(
+                    f"[AudioPipeline] Fast path SUCCESS: Using captions "
+                    f"(from_cache={caption_res.from_cache}, source={caption_res.source}, "
+                    f"segments={len(caption_res.segments)})"
+                )
+                if progress_callback:
+                    msg = "Loaded transcript from cache" if caption_res.from_cache else "Extracted YouTube captions"
+                    progress_callback("captions", msg, 65)
+                
+                title = self._generate_title_from_source(source, source_type)
+                metadata = ProcessingMetadata(
+                    source_type=source_type,
+                    source=source,
+                    job_id=job_id,
+                    language=caption_res.language,
+                    duration=caption_res.duration_seconds,
+                    char_count=len(caption_res.flat_text),
+                    transcript_source=caption_res.source,
+                    video_id=caption_res.video_id
+                )
+                
+                result = IngestionResult(
+                    text=caption_res.flat_text,
+                    metadata=metadata,
+                    title=title,
+                    vector_store_key=job_id or self._generate_vector_key(source, source_type),
+                    indexed=False,
+                    segments=caption_res.segments,
+                    transcript_source=caption_res.source
+                )
+                return result
+            else:
+                logger.info("[AudioPipeline] Captions unavailable or low quality. Proceeding to audio download + STT fallback.")
+                if progress_callback:
+                    progress_callback("audio_processing", "Captions unavailable. Falling back to audio download...", 12)
+        
         # STEP 1: Download/extract audio
         logger.info("[AudioPipeline] STEP 1: Audio extraction")
         
@@ -94,7 +144,7 @@ class AudioPipeline:
             logger.info("[AudioPipeline] Downloading from YouTube...")
             
             if progress_callback:
-                progress_callback("youtube_download", "Downloading from YouTube...", 10)
+                progress_callback("youtube_download", "Downloading from YouTube...", 15)
             
             try:
                 audio_chunks = process_input(source)
@@ -140,15 +190,20 @@ class AudioPipeline:
                 progress_callback(stage, message, progress_map.get(stage, 40))
         
         try:
-            # Use STT service to transcribe all chunks
-            transcript = self.stt_service.transcribe_multiple(
+            # Use STT service — returns STTResult with .text and .segments
+            stt_result = self.stt_service.transcribe_multiple_with_segments(
                 audio_paths=audio_chunks,
                 language=language,
                 progress_callback=stt_progress
             )
-            
-            logger.info(f"[AudioPipeline]   Transcribed: {len(transcript)} characters")
-            
+            transcript = stt_result.text
+            stt_segments = stt_result.segments
+
+            logger.info(
+                f"[AudioPipeline]   Transcribed: {len(transcript)} characters, "
+                f"{len(stt_segments)} timestamped segments"
+            )
+
         except Exception as e:
             logger.error(f"[AudioPipeline] Transcription failed: {e}", exc_info=True)
             raise Exception(f"Speech-to-text transcription failed: {e}")
@@ -181,8 +236,22 @@ class AudioPipeline:
         logger.info("[AudioPipeline] STEP 5: Title generation (from source)")
         
         title = self._generate_title_from_source(source, source_type)
-        
-        logger.info(f"[AudioPipeline]   Title: {title}")
+        stt_source_name = "sarvam" if "hin" in language.lower() else "whisper"
+        logger.info(f"[AudioPipeline]   Title: {title} (STT source: {stt_source_name})")
+
+        # Save to video cache if YouTube
+        if source_type == SourceType.YOUTUBE and video_id:
+            try:
+                self.video_cache.put(CachedTranscript(
+                    video_id=video_id,
+                    segments=stt_segments,
+                    flat_text=cleaned_transcript,
+                    transcript_source=stt_source_name,
+                    language=language,
+                    title=title
+                ))
+            except Exception as e:
+                logger.warning(f"[AudioPipeline] Failed to cache STT transcript: {e}")
         
         # STEP 6: Create metadata
         logger.info("[AudioPipeline] STEP 6: Metadata creation")
@@ -193,7 +262,9 @@ class AudioPipeline:
             job_id=job_id,
             language=language,
             audio_chunks=len(audio_chunks),
-            char_count=len(cleaned_transcript)
+            char_count=len(cleaned_transcript),
+            transcript_source=stt_source_name,
+            video_id=video_id
         )
         
         logger.info("[AudioPipeline]   Metadata created")
@@ -207,7 +278,9 @@ class AudioPipeline:
             metadata=metadata,
             title=title,
             vector_store_key=job_id or self._generate_vector_key(source, source_type),
-            indexed=False  # Will be set to True after vector indexing
+            indexed=False,
+            segments=stt_segments,
+            transcript_source=stt_source_name
         )
         
         logger.info("=" * 80)
@@ -215,6 +288,7 @@ class AudioPipeline:
         logger.info(f"[AudioPipeline] Chunks: {len(audio_chunks)}")
         logger.info(f"[AudioPipeline] Characters: {len(cleaned_transcript)}")
         logger.info(f"[AudioPipeline] Title: {title}")
+        logger.info(f"[AudioPipeline] Transcript source: {stt_source_name}")
         logger.info("[AudioPipeline] Ready for vector indexing")
         logger.info("[AudioPipeline] STT was used (audio → text)")
         logger.info("[AudioPipeline] LLM was NOT used during ingestion")

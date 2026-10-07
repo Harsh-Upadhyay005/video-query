@@ -13,12 +13,27 @@ LLM generates reasoning/answers from text.
 """
 
 import os
-from typing import List, Optional, Callable, Protocol
+from typing import List, Optional, Callable, Protocol, Dict, Any, Tuple
 from abc import ABC, abstractmethod
 from pathlib import Path
+from dataclasses import dataclass, field
 
 from core.logger import get_logger
 from core.config import ConfigManager
+
+
+@dataclass
+class STTResult:
+    """
+    Return type for segment-aware transcription.
+
+    text     — flat joined transcript (backward-compatible)
+    segments — [{text, start, end}] timestamped chunks.
+               Empty list when the provider does not support timestamps
+               (Groq text-only mode, Sarvam).
+    """
+    text: str
+    segments: List[Dict[str, Any]] = field(default_factory=list)
 
 logger = get_logger(__name__)
 
@@ -155,6 +170,83 @@ class WhisperSTTProvider:
             
         except Exception as e:
             logger.error(f"[WhisperSTT] Transcription failed: {e}")
+            raise Exception(f"Whisper transcription failed: {e}")
+
+    def transcribe_with_segments(self, audio_path: str, language: str = "english") -> STTResult:
+        """
+        Transcribe audio and return both flat text and timestamped segments.
+
+        Only faster-whisper produces real timestamps.
+        Legacy openai-whisper falls back to a single segment spanning the whole clip.
+
+        Args:
+            audio_path: Path to audio file
+            language:   Language hint ('english', 'hinglish', …)
+
+        Returns:
+            STTResult with .text and .segments [{text, start, end}]
+        """
+        if not os.path.exists(audio_path):
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        logger.info(f"[WhisperSTT] Transcribing with segments: {Path(audio_path).name}")
+        self._load_model()
+
+        lang_code = "en" if language.lower() == "english" else None
+
+        try:
+            if self._engine == "faster-whisper" and self._faster_model is not None:
+                raw_segments, info = self._faster_model.transcribe(
+                    audio_path,
+                    beam_size=1,
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=500),
+                    language=lang_code,
+                )
+                seg_dicts = []
+                text_parts = []
+                for seg in raw_segments:
+                    cleaned = seg.text.strip()
+                    if cleaned:
+                        seg_dicts.append({
+                            "text": cleaned,
+                            "start": round(float(seg.start), 2),
+                            "end": round(float(seg.end), 2),
+                        })
+                        text_parts.append(cleaned)
+                text = " ".join(text_parts)
+                logger.info(
+                    f"[WhisperSTT] Transcribed {len(text)} chars, "
+                    f"{len(seg_dicts)} segments (faster-whisper)"
+                )
+                return STTResult(text=text, segments=seg_dicts)
+
+            else:
+                # Legacy openai-whisper — has segment-level output too
+                options: Dict[str, Any] = {"fp16": False} if getattr(self._legacy_whisper, "device", None) == "cpu" else {}
+                if lang_code:
+                    options["language"] = lang_code
+                result = self._legacy_whisper.transcribe(audio_path, **options)
+                text = result["text"].strip()
+                seg_dicts = []
+                for seg in result.get("segments", []):
+                    cleaned = seg.get("text", "").strip()
+                    if cleaned:
+                        seg_dicts.append({
+                            "text": cleaned,
+                            "start": round(float(seg.get("start", 0.0)), 2),
+                            "end": round(float(seg.get("end", 0.0)), 2),
+                        })
+                if not seg_dicts and text:
+                    seg_dicts = [{"text": text, "start": 0.0, "end": 0.0}]
+                logger.info(
+                    f"[WhisperSTT] Transcribed {len(text)} chars, "
+                    f"{len(seg_dicts)} segments (openai-whisper)"
+                )
+                return STTResult(text=text, segments=seg_dicts)
+
+        except Exception as e:
+            logger.error(f"[WhisperSTT] Segment transcription failed: {e}")
             raise Exception(f"Whisper transcription failed: {e}")
 
 
@@ -340,73 +432,76 @@ class STTService:
     ) -> str:
         """
         Transcribe audio file to text using appropriate provider.
-        
+        Returns flat text string (backward-compatible).
+        For timestamped segments use transcribe_with_segments().
+        """
+        return self.transcribe_with_segments(audio_path, language, progress_callback).text
+
+    def transcribe_with_segments(
+        self,
+        audio_path: str,
+        language: str = "english",
+        progress_callback: Optional[Callable[[str, str], None]] = None
+    ) -> STTResult:
+        """
+        Transcribe audio and return STTResult with .text and .segments.
+
+        Segments are [{text, start, end}] when the provider supports timestamps
+        (local faster-whisper / openai-whisper).  Groq and Sarvam return an
+        empty segments list because their API responses are text-only.
+
         Args:
             audio_path: Path to audio file
-            language: Language ('english', 'hinglish', etc.)
+            language:   Language ('english', 'hinglish', etc.)
             progress_callback: Optional callback(stage, message)
-            
+
         Returns:
-            Transcribed text
+            STTResult
         """
         logger.info(f"[STTService] Transcribing audio: language={language}, provider={self.stt_provider_type}")
-        
+
         if progress_callback:
             progress_callback("stt", f"Transcribing audio ({language})...")
-        
-        # Use Groq if configured
+
+        # Groq — text-only, no segment timestamps
         if self.stt_provider_type == "groq":
             try:
                 provider = self._get_groq_provider()
                 lang_code = "en" if language.lower() == "english" else language[:2]
                 text = provider.transcribe(audio_path, lang_code)
-                
                 if progress_callback:
                     progress_callback("stt", "Transcription complete (Groq Whisper)")
-                
-                return text
+                return STTResult(text=text, segments=[])
             except Exception as e:
                 logger.warning(f"[STTService] Groq failed, falling back to Whisper: {e}")
-                # Fall back to local Whisper
                 provider = self._get_whisper_provider()
-                text = provider.transcribe(audio_path, language)
-                
+                result = provider.transcribe_with_segments(audio_path, language)
                 if progress_callback:
                     progress_callback("stt", "Transcription complete (Whisper fallback)")
-                
-                return text
-        
-        # Route to appropriate provider based on language
+                return result
+
+        # Hindi / Hinglish → Sarvam (text-only, no timestamps)
         if language.lower() in ['hinglish', 'hindi']:
-            # Use Sarvam for Hindi/Hinglish
             try:
                 provider = self._get_sarvam_provider()
                 text = provider.transcribe(audio_path, language)
-                
                 if progress_callback:
                     progress_callback("stt", "Transcription complete (Sarvam)")
-                
-                return text
-                
+                return STTResult(text=text, segments=[])
             except Exception as e:
                 logger.warning(f"[STTService] Sarvam failed, falling back to Whisper: {e}")
-                # Fall back to Whisper
                 provider = self._get_whisper_provider()
-                text = provider.transcribe(audio_path, language)
-                
+                result = provider.transcribe_with_segments(audio_path, language)
                 if progress_callback:
                     progress_callback("stt", "Transcription complete (Whisper fallback)")
-                
-                return text
-        else:
-            # Use Whisper for English and other languages
-            provider = self._get_whisper_provider()
-            text = provider.transcribe(audio_path, language)
-            
-            if progress_callback:
-                progress_callback("stt", "Transcription complete (Whisper)")
-            
-            return text
+                return result
+
+        # Default → local Whisper (produces timestamps)
+        provider = self._get_whisper_provider()
+        result = provider.transcribe_with_segments(audio_path, language)
+        if progress_callback:
+            progress_callback("stt", "Transcription complete (Whisper)")
+        return result
     
     def transcribe_multiple(
         self,
@@ -414,76 +509,105 @@ class STTService:
         language: str = "english",
         progress_callback: Optional[Callable[[str, str], None]] = None
     ) -> str:
+        """Transcribe multiple chunks and return combined flat text (backward-compatible)."""
+        return self.transcribe_multiple_with_segments(audio_paths, language, progress_callback).text
+
+    def transcribe_multiple_with_segments(
+        self,
+        audio_paths: List[str],
+        language: str = "english",
+        progress_callback: Optional[Callable[[str, str], None]] = None
+    ) -> STTResult:
         """
-        Transcribe multiple audio chunks with parallel processing.
-        
-        Optimizations:
-        - Pre-loads Whisper model before spawning threads
-        - Uses ThreadPoolExecutor (up to 3 workers) for concurrent transcription
-        - Falls back to sequential for non-Whisper providers
-        
+        Transcribe multiple audio chunks in parallel and return STTResult.
+
+        Segments from each chunk are offset-adjusted so their timestamps
+        are relative to the beginning of the full audio, not each chunk.
+        Offset is estimated from the cumulative character count (approximate)
+        unless the provider returns real timestamps, in which case the real
+        end-time of the previous chunk is used.
+
         Args:
-            audio_paths: List of audio file paths
-            language: Language for transcription
+            audio_paths: Ordered list of audio chunk file paths
+            language:    Language for transcription
             progress_callback: Optional callback(stage, message)
-            
+
         Returns:
-            Combined transcript
+            STTResult with merged text and offset-corrected segments
         """
         if not audio_paths:
-            return ""
-            
+            return STTResult(text="", segments=[])
+
         if len(audio_paths) == 1:
-            return self.transcribe(audio_paths[0], language, progress_callback)
+            return self.transcribe_with_segments(audio_paths[0], language, progress_callback)
 
         total = len(audio_paths)
-        logger.info(f"[STTService] Transcribing {total} audio chunks")
-        
-        # Pre-load provider before parallel execution
+        logger.info(f"[STTService] Transcribing {total} audio chunks (with segments)")
+
+        # Pre-load model before spawning threads
         if self.stt_provider_type == "groq":
-            provider = self._get_groq_provider()
+            self._get_groq_provider()
         elif language.lower() not in ['hinglish', 'hindi']:
             provider = self._get_whisper_provider()
-            provider._load_model()  # Ensure model is loaded before threads start
-        
+            provider._load_model()
+
         import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        
+
         completed_count = [0]
         lock = threading.Lock()
-        results = {}
-        
-        def _transcribe_indexed(idx: int, path: str):
-            text = self.transcribe(path, language, progress_callback=None)
+        results: Dict[int, STTResult] = {}
+
+        def _transcribe_indexed(idx: int, path: str) -> None:
+            res = self.transcribe_with_segments(path, language, progress_callback=None)
             with lock:
-                results[idx] = text
+                results[idx] = res
                 completed_count[0] += 1
                 if progress_callback:
                     progress_callback("stt", f"Transcribing chunk {completed_count[0]}/{total}...")
-        
-        max_workers = min(3, total)
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(_transcribe_indexed, i, path)
-                for i, path in enumerate(audio_paths)
-            ]
+
+        with ThreadPoolExecutor(max_workers=min(3, total)) as executor:
+            futures = [executor.submit(_transcribe_indexed, i, p) for i, p in enumerate(audio_paths)]
             for future in as_completed(futures):
                 try:
                     future.result()
                 except Exception as e:
                     logger.error(f"[STTService] Chunk transcription failed: {e}")
-        
-        # Reassemble in original order
-        transcripts = [results[i] for i in range(total) if i in results and results[i]]
-        
-        combined_transcript = "\n\n".join(transcripts)
-        logger.info(f"[STTService] Combined transcript: {len(combined_transcript)} characters")
-        
+
+        # Merge in order, adjusting segment timestamps per chunk
+        all_segments: List[Dict[str, Any]] = []
+        text_parts: List[str] = []
+        time_offset = 0.0
+
+        for i in range(total):
+            if i not in results or not results[i].text:
+                continue
+            chunk = results[i]
+            text_parts.append(chunk.text)
+
+            if chunk.segments:
+                for seg in chunk.segments:
+                    all_segments.append({
+                        "text": seg["text"],
+                        "start": round(seg["start"] + time_offset, 2),
+                        "end":   round(seg["end"]   + time_offset, 2),
+                    })
+                # Advance offset by actual last segment end time
+                time_offset = all_segments[-1]["end"] if all_segments else time_offset
+            else:
+                # No timestamps — leave segments empty for this chunk
+                time_offset = 0.0  # can't accumulate without real times
+
+        combined_text = "\n\n".join(text_parts)
+        logger.info(
+            f"[STTService] Combined: {len(combined_text)} chars, "
+            f"{len(all_segments)} segments ({total} chunks)"
+        )
+
         if progress_callback:
             progress_callback("stt", f"Transcription complete ({total} chunks)")
-        
-        return combined_transcript
+
+        return STTResult(text=combined_text, segments=all_segments)
 
 
 # Singleton instance

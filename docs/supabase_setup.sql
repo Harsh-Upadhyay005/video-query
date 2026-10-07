@@ -1,16 +1,25 @@
--- =============================================================================
+--  ================
 -- Supabase Database Setup for AI Video Agent
--- =============================================================================
--- Run this SQL in Supabase SQL Editor to create required tables and policies
--- Dashboard → SQL Editor → New Query → Paste this → Run
--- =============================================================================
+--  ================
+-- ⚠️  LEGACY FILE — kept for reference only.
+--
+-- The current schema lives in two migration files.
+-- Run them IN ORDER in Supabase Dashboard → SQL Editor:
+--
+--   1. docs/supabase_analyses_migration.sql   ← analyses table, RLS, FTS, triggers
+--   2. docs/supabase_shares_migration.sql     ← shares table, RLS, increment_share_views RPC
+--
+-- The tables below (file_metadata, processing_results) are no longer used
+-- by the application but are kept here for backward-compatibility reference.
+--  ================
+
 
 -- ── Drop existing tables if re-running (optional) ───────────────────────────
 -- Uncomment these lines if you want to start fresh
 -- DROP TABLE IF EXISTS processing_results CASCADE;
 -- DROP TABLE IF EXISTS file_metadata CASCADE;
 
--- ── Table: file_metadata ─────────────────────────────────────────────────────
+-- ── Table: file_metadata  ──
 -- Stores metadata about uploaded files
 CREATE TABLE IF NOT EXISTS file_metadata (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -86,7 +95,7 @@ CREATE POLICY IF NOT EXISTS "Allow public insert processing_results"
   ON processing_results FOR INSERT
   WITH CHECK (true);
 
--- ── Verification Queries ─────────────────────────────────────────────────────
+-- ── Verification Queries  ──
 -- Run these to verify setup (optional)
 
 -- Check tables exist
@@ -105,9 +114,9 @@ SELECT schemaname, tablename, policyname, permissive, roles, cmd, qual
 FROM pg_policies 
 WHERE tablename IN ('file_metadata', 'processing_results');
 
--- ── Done! ────────────────────────────────────────────────────────────────────
+-- ── Done!  ─────────────────
 -- You should see:
 -- - 2 tables created
 -- - 4 indexes created
 -- - 5 policies created
--- =============================================================================
+--  ================
