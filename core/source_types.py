@@ -4,8 +4,8 @@ Clearly separates PDF/document processing from audio/video transcription.
 """
 
 from enum import Enum
-from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List
 
 
 class SourceType(Enum):
@@ -15,12 +15,14 @@ class SourceType(Enum):
     PDF: Local text extraction → RAG (no LLM during ingestion)
     AUDIO: STT → RAG (STT converts speech to text)
     VIDEO: STT → RAG (extract audio first)
-    YOUTUBE: Download → STT → RAG
+    YOUTUBE: Download → STT → RAG (or captions → RAG)
+    MEETING: STT → structured minutes → RAG
     """
     PDF = "pdf"
     AUDIO = "audio"
     VIDEO = "video"
     YOUTUBE = "youtube"
+    MEETING = "meeting"
     
     @classmethod
     def from_source(cls, source: str) -> 'SourceType':
@@ -68,7 +70,7 @@ class SourceType(Enum):
     
     def requires_stt(self) -> bool:
         """Check if this source type requires speech-to-text."""
-        return self in [SourceType.AUDIO, SourceType.VIDEO, SourceType.YOUTUBE]
+        return self in [SourceType.AUDIO, SourceType.VIDEO, SourceType.YOUTUBE, SourceType.MEETING]
     
     def is_document(self) -> bool:
         """Check if this is a document type (already contains text)."""
@@ -102,6 +104,12 @@ class ProcessingMetadata:
     char_count: Optional[int] = None
     chunk_count: Optional[int] = None
     
+    # Transcript source tracking (captions, whisper, sarvam)
+    transcript_source: Optional[str] = None
+    
+    # YouTube-specific
+    video_id: Optional[str] = None
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -114,7 +122,9 @@ class ProcessingMetadata:
             'duration': self.duration,
             'audio_chunks': self.audio_chunks,
             'char_count': self.char_count,
-            'chunk_count': self.chunk_count
+            'chunk_count': self.chunk_count,
+            'transcript_source': self.transcript_source,
+            'video_id': self.video_id,
         }
 
 
@@ -132,6 +142,13 @@ class IngestionResult:
     vector_store_key: Optional[str] = None
     indexed: bool = False
     
+    # Timestamped segments: [{text, start, end}]
+    # Used for click-to-seek, subtitle export, and citations
+    segments: Optional[List[Dict[str, Any]]] = None
+    
+    # Source of the transcript (captions, whisper, sarvam)
+    transcript_source: Optional[str] = None
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -139,7 +156,10 @@ class IngestionResult:
             'metadata': self.metadata.to_dict(),
             'title': self.title,
             'vector_store_key': self.vector_store_key,
-            'indexed': self.indexed
+            'indexed': self.indexed,
+            'has_segments': self.segments is not None and len(self.segments) > 0,
+            'segment_count': len(self.segments) if self.segments else 0,
+            'transcript_source': self.transcript_source,
         }
 
 

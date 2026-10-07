@@ -515,3 +515,99 @@ def get_rag_orchestrator() -> RAGLLMOrchestrator:
     return _rag_orchestrator_instance
 
 
+def structured_output(
+    prompt: str,
+    output_model,
+    context: str = "",
+    max_retries: int = 1,
+    temperature: float = 0.2,
+):
+    """
+    Call Mistral with a JSON schema and validate with Pydantic.
+    Retries once on parse failure.
+
+    Args:
+        prompt: System prompt / instructions
+        output_model: Pydantic BaseModel class (used for validation)
+        context: Content to analyze
+        max_retries: Number of retries on validation failure
+        temperature: LLM temperature
+
+    Returns:
+        Validated Pydantic model instance
+
+    Raises:
+        ValueError: If output cannot be parsed after retries
+    """
+    import json as _json
+    from pydantic import ValidationError as PydanticValidationError
+
+    logger.info(f"[StructuredOutput] Generating {output_model.__name__}")
+
+    mistral_client = get_mistral_client(temperature=temperature)
+
+    # Build the schema description for the prompt
+    schema_json = _json.dumps(output_model.model_json_schema(), indent=2)
+
+    system_prompt = f"""{prompt}
+
+You MUST respond with valid JSON that matches this schema exactly:
+{schema_json}
+
+Respond ONLY with the JSON object, no markdown fences, no explanation."""
+
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+
+    chain_prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{context}"),
+    ])
+
+    llm = mistral_client._get_llm()
+    chain = chain_prompt | llm | StrOutputParser()
+
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            raw = mistral_client.invoke_with_retry(
+                chain,
+                {"context": context},
+                operation_name=f"structured output ({output_model.__name__})",
+            )
+
+            # Strip markdown fences if present
+            cleaned = raw.strip()
+            if cleaned.startswith("```"):
+                # Remove ```json ... ``` wrapper
+                lines = cleaned.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned = "\n".join(lines)
+
+            parsed = _json.loads(cleaned)
+            result = output_model.model_validate(parsed)
+
+            logger.info(f"[StructuredOutput] Successfully parsed {output_model.__name__}")
+            return result
+
+        except (PydanticValidationError, _json.JSONDecodeError) as e:
+            last_error = e
+            logger.warning(
+                f"[StructuredOutput] Parse attempt {attempt + 1} failed: {e}"
+            )
+            if attempt < max_retries:
+                logger.info("[StructuredOutput] Retrying...")
+                continue
+
+        except Exception as e:
+            logger.error(f"[StructuredOutput] LLM error: {e}")
+            raise
+
+    raise ValueError(
+        f"Failed to parse structured output for {output_model.__name__} "
+        f"after {max_retries + 1} attempts: {last_error}"
+    )

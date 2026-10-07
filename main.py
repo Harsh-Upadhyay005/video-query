@@ -342,6 +342,10 @@ def run_pipeline(
         "open_questions": open_questions,
         "source_type": source_type.value,
         "ingestion_mode": mode.value,
+        "segments": getattr(ingestion_result, 'segments', None) or [],
+        "transcript_source": getattr(ingestion_result, 'transcript_source', None),
+        "video_id": getattr(ingestion_result.metadata, 'video_id', None) if hasattr(ingestion_result, 'metadata') and ingestion_result.metadata else None,
+        "duration_seconds": getattr(ingestion_result.metadata, 'duration', None) if hasattr(ingestion_result, 'metadata') and ingestion_result.metadata else None,
         # Include stage statuses for frontend
         "stage_statuses": {
             name: {

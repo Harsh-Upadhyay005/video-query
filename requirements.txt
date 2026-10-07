@@ -11,6 +11,8 @@ python-multipart==0.0.9
 # Audio / Video
 # ============================================================
 yt-dlp>=2025.01.26,<2027
+youtube-transcript-api>=0.6.2
+audioop-lts; python_version >= "3.13"
 pydub==0.25.1
 ffmpeg-python==0.2.0
 
