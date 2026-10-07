@@ -11,9 +11,10 @@ import AudioVideoAnalyzer from './components/AudioVideoAnalyzer';
 import { AnalysisResultCard } from './components/AnalysisResultCard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { SharedAnalysisPage } from './pages/SharedAnalysisPage';
 import type { AnalysisData } from './types/analysis';
 
-type ViewType = 'home' | 'studio';
+type ViewType = 'home' | 'studio' | 'share';
 type AnalyzerType = 'audio-video' | 'pdf';
 
 function App() {
@@ -21,6 +22,34 @@ function App() {
   const [, setStudioUrl] = useState<string>('');
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisData | null>(null);
   const [analyzerType, setAnalyzerType] = useState<AnalyzerType>('audio-video');
+  const [shareSlug, setShareSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkRoute = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#/share/')) {
+        const slug = hash.replace('#/share/', '').split('?')[0].split('/')[0];
+        if (slug) {
+          setShareSlug(slug);
+          setActiveView('share');
+          return;
+        }
+      }
+      const pathname = window.location.pathname;
+      if (pathname.startsWith('/share/')) {
+        const slug = pathname.replace('/share/', '').split('?')[0].split('/')[0];
+        if (slug) {
+          setShareSlug(slug);
+          setActiveView('share');
+          return;
+        }
+      }
+    };
+
+    checkRoute();
+    window.addEventListener('hashchange', checkRoute);
+    return () => window.removeEventListener('hashchange', checkRoute);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('lastStudioAnalysis');
@@ -78,15 +107,33 @@ function App() {
     <ErrorBoundary>
       <div className="min-h-screen bg-[#FDFCF0] text-[#1A1A1A] font-sans overflow-x-hidden">
         <Header
-          activeView={activeView}
-          onNavigateToHome={() => setActiveView('home')}
+          activeView={activeView === 'share' ? 'home' : activeView}
+          onNavigateToHome={() => {
+            window.location.hash = '';
+            setActiveView('home');
+          }}
           onNavigateToStudio={() => {
+            window.location.hash = '';
             setActiveView('studio');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />
 
-        {activeView === 'home' ? (
+        {activeView === 'share' && shareSlug ? (
+          <SharedAnalysisPage
+            slug={shareSlug}
+            onNavigateToStudio={() => {
+              window.location.hash = '';
+              setActiveView('studio');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onNavigateToHome={() => {
+              window.location.hash = '';
+              setActiveView('home');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        ) : activeView === 'home' ? (
           <div className="animate-fade-in">
             <WisprHero
               onStartAnalysis={handleStartAnalysis}

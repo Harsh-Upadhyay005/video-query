@@ -316,6 +316,31 @@ class APIClient {
       server,
     };
   }
+
+  // Share Links
+  async createShare(analysisData, customSlug = null) {
+    return this.request('/api/v1/shares', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...analysisData,
+        custom_slug: customSlug,
+      }),
+    });
+  }
+
+  async getShare(slug) {
+    return this.request(`/api/v1/shares/${encodeURIComponent(slug)}`);
+  }
+
+  async listUserShares() {
+    return this.request('/api/v1/shares/user/me');
+  }
+
+  async deleteShare(slug) {
+    return this.request(`/api/v1/shares/${encodeURIComponent(slug)}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export default new APIClient();
