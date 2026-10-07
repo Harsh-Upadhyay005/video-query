@@ -4,7 +4,7 @@ Provides centralized Supabase client for storage and database operations.
 """
 
 import os
-from typing import Optional
+from typing import Optional, Any
 from dotenv import load_dotenv
 
 from core.logger import get_logger
@@ -19,6 +19,8 @@ try:
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
+    Client = Any
+    create_client = None
     logger.warning("[Supabase] supabase-py not installed. Install with: pip install supabase")
 
 
