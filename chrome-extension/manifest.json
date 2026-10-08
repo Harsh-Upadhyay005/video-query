@@ -52,7 +52,7 @@
 
   "host_permissions": [
     "https://www.youtube.com/*",
-    "https://video-query-io8z.onrender.com/*"
+    "https://video-query-io3r.onrender.com/*"
   ],
 
   "web_accessible_resources": [

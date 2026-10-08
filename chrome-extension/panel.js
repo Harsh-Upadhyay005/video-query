@@ -1,6 +1,6 @@
 'use strict';
 
-const API_BASE = 'https://video-query-io8z.onrender.com';
+const API_BASE = 'https://video-query-io3r.onrender.com';
 
 // ── State ──────────────────────────────────────────────────────────────────
 let currentJobId   = null;
