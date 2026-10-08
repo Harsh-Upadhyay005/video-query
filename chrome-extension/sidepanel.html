@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoQuery</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-logo">
+      <span class="logo-mark">V</span>
+      <span class="logo-name">VideoQuery</span>
+    </div>
+    <nav class="header-nav">
+      <button class="nav-btn active" data-view="analyze">Analyze</button>
+      <button class="nav-btn" data-view="library">Library</button>
+    </nav>
+  </header>
+
+  <!-- ── VIEW: Analyze ──────────────────────────────────── -->
+  <main id="view-analyze" class="view active">
+
+    <!-- URL input -->
+    <section class="section">
+      <label class="label" for="url-input">YouTube URL</label>
+      <div class="input-row">
+        <input id="url-input" class="input" type="url"
+               placeholder="https://youtube.com/watch?v=..." />
+        <button id="paste-btn" class="icon-btn" title="Paste from clipboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round">
+            <rect x="9" y="2" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Language selector -->
+      <div class="lang-row">
+        <button class="lang-btn active" data-lang="english">English</button>
+        <button class="lang-btn" data-lang="hinglish">Hindi / Hinglish</button>
+      </div>
+
+      <button id="analyze-btn" class="primary-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+             stroke-linejoin="round">
+          <path d="M5 3l14 9-14 9V3z"/>
+        </svg>
+        Analyze Video
+      </button>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress-section" class="section hidden">
+      <div class="progress-header">
+        <span id="progress-label">Starting…</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="progress-bar" class="progress-fill" style="width:0%"></div>
+      </div>
+    </section>
+
+    <!-- Error -->
+    <section id="error-section" class="section hidden">
+      <div class="error-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span id="error-msg"></span>
+      </div>
+      <button id="retry-btn" class="secondary-btn">Retry</button>
+    </section>
+
+    <!-- Results -->
+    <section id="result-section" class="section hidden">
+
+      <!-- Source badge -->
+      <div class="result-meta">
+        <span id="source-badge" class="badge badge-captions hidden">📋 YouTube Captions</span>
+        <span id="source-badge-whisper" class="badge badge-whisper hidden">🎙 Whisper STT</span>
+        <span id="source-badge-sarvam" class="badge badge-sarvam hidden">🗣 Sarvam AI</span>
+        <span id="segment-count" class="badge badge-neutral hidden"></span>
+      </div>
+
+      <h2 id="result-title" class="result-title"></h2>
+
+      <!-- Summary -->
+      <div class="card">
+        <div class="card-header">
+          <span>Summary</span>
+          <button class="copy-btn" data-target="summary-text" title="Copy">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+        </div>
+        <p id="summary-text" class="card-body"></p>
+      </div>
+
+      <!-- Action items -->
+      <div id="action-card" class="card hidden">
+        <div class="card-header"><span>Action Items</span></div>
+        <p id="action-text" class="card-body"></p>
+      </div>
+
+      <!-- Key decisions -->
+      <div id="decision-card" class="card hidden">
+        <div class="card-header"><span>Key Decisions</span></div>
+        <p id="decision-text" class="card-body"></p>
+      </div>
+
+      <!-- Transcript toggle -->
+      <div class="card">
+        <div class="card-header">
+          <span>Transcript <span id="seg-toggle-hint" class="hint"></span></span>
+          <button id="transcript-toggle" class="toggle-btn">Show</button>
+        </div>
+        <div id="transcript-body" class="transcript-body hidden"></div>
+      </div>
+
+      <!-- Save to library -->
+      <button id="save-btn" class="secondary-btn">💾 Save to My Library</button>
+    </section>
+
+    <!-- Chat -->
+    <section id="chat-section" class="section hidden">
+      <div class="section-title">Ask a question</div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" class="input" type="text"
+               placeholder="What does the video say about…" />
+        <button id="chat-send" class="send-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+               stroke-linejoin="round">
+            <path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9l20-7z"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ── VIEW: Library ──────────────────────────────────── -->
+  <main id="view-library" class="view hidden">
+    <section class="section">
+      <div class="section-title">My Saved Videos</div>
+      <p class="hint" id="library-empty-hint">No videos saved yet. Analyze a video and click "Save to My Library".</p>
+      <div id="library-list"></div>
+    </section>
+  </main>
+
+  <script src="panel.js"></script>
+</body>
+</html>
