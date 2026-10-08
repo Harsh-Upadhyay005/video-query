@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- Open this file in Chrome, then run generateIcons() in the console.
+     It will download icon16.png, icon32.png, icon48.png, icon128.png.
+     Place those files in chrome-extension/icons/ -->
+<html><body>
+<canvas id="c"></canvas>
+<script>
+function drawIcon(size) {
+  const c = document.getElementById('c');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const r = size * 0.18;
+
+  // Background
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, r);
+  ctx.fill();
+
+  // "V" letter
+  ctx.fillStyle = '#e8e0f7';
+  ctx.font = `bold ${size * 0.58}px -apple-system, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('V', size / 2, size / 2 + size * 0.03);
+
+  return c.toDataURL('image/png');
+}
+
+function download(dataUrl, name) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = name;
+  a.click();
+}
+
+function generateIcons() {
+  [16, 32, 48, 128].forEach(size => {
+    download(drawIcon(size), `icon${size}.png`);
+  });
+  console.log('Done! Move the downloaded files into chrome-extension/icons/');
+}
+
+// Auto-run
+generateIcons();
+</script>
+</body></html>

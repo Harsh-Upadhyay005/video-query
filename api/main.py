@@ -37,13 +37,27 @@ def _cors_settings() -> Tuple[List[str], bool]:
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000",
     )
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+    # Chrome extensions send "null" or "chrome-extension://<id>" as Origin.
+    # FastAPI's CORSMiddleware doesn't support prefix matching, so we allow
+    # all origins when any chrome-extension entry is listed, but only in
+    # a controlled way — we add the special sentinel "*" only if explicitly
+    # requested via CORS_ORIGINS=* or a chrome-extension:// entry is present.
+    has_extension = any("chrome-extension" in o for o in origins)
+
     if environment == "production":
-        origins = [origin for origin in origins if origin != "*"]
+        origins = [o for o in origins if o != "*" and "chrome-extension" not in o]
         if not origins:
             origins = ["http://localhost:5173"]
             logger.warning(
                 "CORS_ORIGINS is not set in production; defaulting to http://localhost:5173"
             )
+        # Re-add wildcard only when the extension entry was present — this
+        # tells FastAPI to allow any origin (the extension's random ID changes
+        # per browser install, so we can't list it statically).
+        if has_extension:
+            origins = ["*"]
+
     allow_credentials = "*" not in origins
     return origins, allow_credentials
 
