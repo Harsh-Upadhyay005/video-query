@@ -339,45 +339,94 @@ class GroqSTTProvider:
         
         logger.info(f"[GroqSTT] Initialized with model: {self.model}")
     
+    GROQ_MAX_FILE_BYTES = 24 * 1024 * 1024  # 24 MB (Groq limit is 25 MB)
+
     def transcribe(self, audio_path: str, language: str = "en") -> str:
         """
         Transcribe audio using Groq Whisper API.
-        
-        Args:
-            audio_path: Path to audio file
-            language: Language code ('en' for English, 'hi' for Hindi, etc.)
-            
-        Returns:
-            Transcribed text
+        Automatically splits files >24 MB into smaller chunks.
         """
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
-        
-        logger.info(f"[GroqSTT] Transcribing with {self.model}: {Path(audio_path).name}")
-        
+
+        file_size = os.path.getsize(audio_path)
+        logger.info(
+            f"[GroqSTT] Transcribing with {self.model}: "
+            f"{Path(audio_path).name} ({file_size / 1024 / 1024:.1f} MB)"
+        )
+
+        if file_size > self.GROQ_MAX_FILE_BYTES:
+            logger.info(
+                f"[GroqSTT] File exceeds 24 MB — splitting into chunks before sending to Groq"
+            )
+            return self._transcribe_large_file(audio_path, language)
+
+        return self._transcribe_single(audio_path, language)
+
+    def _transcribe_single(self, audio_path: str, language: str) -> str:
+        """Send one file to Groq and return the transcript text."""
         try:
             from groq import Groq
-            
+
             client = Groq(api_key=self.api_key)
-            
-            with open(audio_path, 'rb') as audio_file:
+            with open(audio_path, "rb") as f:
                 transcription = client.audio.transcriptions.create(
-                    file=(Path(audio_path).name, audio_file.read()),
+                    file=(Path(audio_path).name, f.read()),
                     model=self.model,
                     language=language if language != "english" else "en",
                     response_format="text",
-                    temperature=0.0
+                    temperature=0.0,
                 )
-            
             text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
             logger.info(f"[GroqSTT] Transcribed {len(text)} characters")
             return text
-            
+
         except ImportError:
             raise ImportError("groq library required. Install with: pip install groq")
         except Exception as e:
             logger.error(f"[GroqSTT] Transcription failed: {e}")
             raise Exception(f"Groq Whisper transcription failed: {e}")
+
+    def _transcribe_large_file(self, audio_path: str, language: str) -> str:
+        """Split a large audio file into ≤24 MB WAV chunks and transcribe each."""
+        import tempfile
+        import math
+
+        try:
+            from pydub import AudioSegment
+        except ImportError:
+            logger.warning("[GroqSTT] pydub not available — falling back to single-file transcription")
+            return self._transcribe_single(audio_path, language)
+
+        audio = AudioSegment.from_file(audio_path)
+        total_ms = len(audio)
+        file_size = os.path.getsize(audio_path)
+
+        # Calculate chunk duration so each chunk stays under 24 MB
+        bytes_per_ms = file_size / total_ms
+        chunk_ms = int((self.GROQ_MAX_FILE_BYTES / bytes_per_ms) * 0.9)  # 10% safety margin
+        chunk_ms = max(chunk_ms, 30_000)  # minimum 30 seconds per chunk
+
+        num_chunks = math.ceil(total_ms / chunk_ms)
+        logger.info(f"[GroqSTT] Splitting into {num_chunks} chunks of ~{chunk_ms // 1000}s each")
+
+        transcripts = []
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(num_chunks):
+                start = i * chunk_ms
+                end = min(start + chunk_ms, total_ms)
+                chunk = audio[start:end]
+
+                chunk_path = os.path.join(tmp, f"chunk_{i}.wav")
+                chunk.export(chunk_path, format="wav",
+                             parameters=["-ar", "16000", "-ac", "1"])
+
+                logger.info(f"[GroqSTT] Transcribing chunk {i + 1}/{num_chunks}")
+                text = self._transcribe_single(chunk_path, language)
+                if text:
+                    transcripts.append(text)
+
+        return " ".join(transcripts)
 
 
 class STTService:
