@@ -225,40 +225,70 @@ class APIClient {
   async pollJobProgress(jobId, onProgress = null) {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const eventSource = new EventSource(`${this.baseURL}/api/v1/progress/${jobId}`);
+      let errorCount = 0;
+      let eventSource = null;
 
       const finish = (fn, value) => {
         if (settled) return;
         settled = true;
-        eventSource.close();
+        if (eventSource) eventSource.close();
         fn(value);
       };
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (onProgress && data.progress != null) {
-            onProgress(data.progress);
-          }
 
-          if (data.status === 'completed' && data.result) {
-            finish(resolve, this.normalizeAnalysisResult(data.result, jobId));
-          } else if (data.status === 'failed') {
-            finish(reject, new Error(data.error || data.message || 'Analysis failed'));
-          }
-        } catch (err) {
-          console.error('Error parsing SSE data:', err);
-        }
-      };
+      const connect = () => {
+        if (settled) return;
+        eventSource = new EventSource(`${this.baseURL}/api/v1/progress/${jobId}`);
 
-      eventSource.onerror = () => {
-        if (settled) {
+        eventSource.onmessage = (event) => {
+          errorCount = 0; // reset on successful message
+          try {
+            const data = JSON.parse(event.data);
+
+            if (onProgress && data.progress != null) {
+              onProgress(data.progress);
+            }
+
+            if (data.status === 'completed' && data.result) {
+              finish(resolve, this.normalizeAnalysisResult(data.result, jobId));
+            } else if (data.status === 'failed') {
+              finish(reject, new Error(data.error || data.message || 'Analysis failed'));
+            }
+          } catch (err) {
+            console.error('Error parsing SSE data:', err);
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (settled) { eventSource.close(); return; }
           eventSource.close();
-          return;
-        }
-        finish(reject, new Error('Lost connection to server. Analysis may still be in progress.'));
+          errorCount++;
+
+          // Allow up to 5 reconnect attempts with backoff before giving up
+          if (errorCount <= 5) {
+            const delay = Math.min(2000 * errorCount, 10000);
+            setTimeout(() => {
+              if (!settled) {
+                // Check job status via REST before reconnecting
+                this.request(`/api/v1/status/${jobId}`)
+                  .then((data) => {
+                    if (data.status === 'completed' && data.result) {
+                      finish(resolve, this.normalizeAnalysisResult(data.result, jobId));
+                    } else if (data.status === 'failed') {
+                      finish(reject, new Error(data.error || 'Analysis failed'));
+                    } else {
+                      connect(); // still running — reconnect SSE
+                    }
+                  })
+                  .catch(() => connect()); // status endpoint unreachable, just reconnect
+              }
+            }, delay);
+          } else {
+            finish(reject, new Error('Lost connection to server. Analysis may still be in progress.'));
+          }
+        };
       };
+
+      connect();
 
       setTimeout(() => {
         if (!settled) {
