@@ -180,10 +180,11 @@ class PDFPipeline:
         """
         Clean and normalize extracted text.
         
-        Local processing only:
-        - Remove excessive whitespace
-        - Normalize line breaks
-        - Remove special characters if needed
+        Local processing:
+        - Reassemble vertical single-character sequences from stylized PDF text
+        - Fix hyphenated line wraps
+        - De-duplicate repetitive headers
+        - Remove excessive whitespace and normalize line breaks
         
         Args:
             text: Raw extracted text
@@ -191,17 +192,58 @@ class PDFPipeline:
         Returns:
             Cleaned text
         """
-        # Remove excessive blank lines (more than 2 consecutive)
         import re
+        if not text:
+            return ""
+
+        # Normalize newlines
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+        # Fix hyphenated words split across lines
+        text = re.sub(r'([A-Za-z]+)-\n([A-Za-z]+)', r'\1\2', text)
+
+        # Reassemble vertical single-character lines (common in styled book titles / drop caps)
+        raw_lines = text.split('\n')
+        processed_lines = []
+        single_chars = []
+
+        def flush_chars():
+            nonlocal single_chars
+            if single_chars:
+                reconstructed = ''.join(single_chars).strip()
+                if reconstructed:
+                    processed_lines.append(reconstructed)
+                single_chars = []
+
+        for line in raw_lines:
+            trimmed = line.strip()
+            if len(trimmed) == 1 and not re.match(r'^\[\d+\]$', trimmed):
+                single_chars.append(trimmed)
+            elif len(trimmed) == 0:
+                if len(single_chars) >= 2:
+                    single_chars.append(' ')
+                else:
+                    flush_chars()
+                    processed_lines.append('')
+            else:
+                flush_chars()
+                # De-duplicate repeated headers (e.g., "TitleTitle" -> "Title")
+                if len(trimmed) >= 8 and len(trimmed) % 2 == 0:
+                    half = len(trimmed) // 2
+                    if trimmed[:half] == trimmed[half:]:
+                        line = trimmed[:half]
+                processed_lines.append(line)
+        flush_chars()
+
+        text = '\n'.join(processed_lines)
+
+        # Remove excessive blank lines (more than 2 consecutive)
         text = re.sub(r'\n{3,}', '\n\n', text)
         
         # Remove excessive spaces
         text = re.sub(r' {2,}', ' ', text)
         
-        # Normalize unicode characters
-        text = text.strip()
-        
-        return text
+        return text.strip()
     
     def _generate_title_from_filename(self, file_name: str) -> str:
         """

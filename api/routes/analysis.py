@@ -525,10 +525,15 @@ async def process_uploaded_file_with_progress(
         
         update_progress("processing", "Processing uploaded file...", 10)
         
+        from core.source_types import PipelineMode
+        is_pdf_upload = file_path.lower().endswith(".pdf")
+        pipeline_mode = PipelineMode.INGEST_WITH_ANALYSIS if is_pdf_upload else PipelineMode.INGEST_ONLY
+
         # Run the pipeline in a thread to avoid blocking the event loop
         result = await asyncio.to_thread(
             run_pipeline, file_path, language,
-            progress_callback=update_progress, source_key=job_id
+            progress_callback=update_progress, source_key=job_id,
+            mode=pipeline_mode
         )
         
         # Ensure result contains only JSON-serializable data
