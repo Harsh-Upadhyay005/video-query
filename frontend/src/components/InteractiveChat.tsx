@@ -123,7 +123,32 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({ currentAnalysi
 
     try {
       const sessionId = currentAnalysis?.job_id || null;
-      const data = await apiClient.sendChatMessage(question, sessionId);
+      let data = await apiClient.sendChatMessage(question, sessionId).catch(async (err: any) => {
+        // Auto-reindex if server restarted and lost the vector store
+        const isGone =
+          err?.status === 404 ||
+          (err?.data?.detail || err?.message || "").toLowerCase().includes("no transcript");
+
+        if (isGone && currentAnalysis) {
+          const reindexMsg: Message = {
+            id: Date.now().toString() + "-reindex",
+            sender: "assistant",
+            text: "⚡ Server restarted and lost the index. Re-indexing your content now — this takes about 10–30 seconds...",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, reindexMsg]);
+
+          // Re-analyze the source to rebuild the vector store
+          const source = currentAnalysis.metadata?.source || "";
+          if (source) {
+            await apiClient.analyzeVideoAsync(source);
+          }
+
+          // Retry the question with the fresh session
+          return await apiClient.sendChatMessage(question, sessionId);
+        }
+        throw err;
+      });
       
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -135,14 +160,30 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({ currentAnalysi
       setMessages(prev => [...prev, aiMsg]);
       setIsTyping(false);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('=== InteractiveChat: Request ERROR ===', error);
       setIsTyping(false);
-      
+
+      // Surface the real error message from the backend instead of a generic one
+      const detail =
+        error?.data?.detail ||
+        error?.message ||
+        "Unknown error";
+
+      const isSessionGone =
+        error?.status === 404 ||
+        detail.toLowerCase().includes("no transcript") ||
+        detail.toLowerCase().includes("session") ||
+        detail.toLowerCase().includes("restarted");
+
+      const errorText = isSessionGone
+        ? `Session expired — the server restarted and lost the in-memory index. Please re-analyze the video or document and then ask again.\n\n_Technical detail: ${detail}_`
+        : `Failed to get an answer: ${detail}`;
+
       const errorAiMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: "assistant",
-        text: "I encountered an error answering your question. Please ensure the backend is running and vector database is indexed.",
+        text: errorText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, errorAiMsg]);
