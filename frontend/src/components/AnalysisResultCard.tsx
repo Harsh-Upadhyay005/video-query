@@ -1,8 +1,27 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type React from 'react';
-import { Sparkles, Play, FileText, ChevronDown, ChevronUp, MessageSquare, Clock, Zap, Mic, Copy, Check, ExternalLink, Share2 } from 'lucide-react';
+import {
+  Sparkles,
+  Play,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  Clock,
+  Zap,
+  Mic,
+  Copy,
+  Check,
+  ExternalLink,
+  Share2,
+  BookOpen,
+  ArrowRight,
+  ListChecks
+} from 'lucide-react';
 import type { AnalysisData, TranscriptSegment } from '../types/analysis';
 import { ShareModal } from './ShareModal';
+import { processDocumentData } from '../utils/documentHelper';
+import { DocumentReader } from './DocumentReader';
 
 interface AnalysisResultCardProps {
   analysis: AnalysisData;
@@ -22,7 +41,8 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
   const [copied, setCopied] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
 
-  const isPdf = analysis.type === 'pdf';
+  const docInfo = useMemo(() => processDocumentData(analysis), [analysis]);
+  const isPdf = analysis.type === 'pdf' || docInfo.isDocument;
   const hasSegments = Boolean(analysis.segments && analysis.segments.length > 0);
   const source = analysis.transcript_source || (isPdf ? 'document' : 'audio');
 
@@ -34,6 +54,14 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
   };
 
   const renderSourceBadge = () => {
+    if (isPdf) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+          <FileText className="w-3 h-3 text-indigo-600" />
+          <span>PDF Document ({docInfo.totalPages} Pages)</span>
+        </span>
+      );
+    }
     if (source === 'captions') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -69,7 +97,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E5D7FA] text-[#1A1A1A] text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 text-[#1A1A1A]" />
-              <span>ANALYSIS COMPLETE</span>
+              <span>{isPdf ? 'DOCUMENT READY' : 'ANALYSIS COMPLETE'}</span>
             </div>
             {renderSourceBadge()}
           </div>
@@ -110,7 +138,76 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
         </div>
       </div>
 
-      {/* Expandable Full Transcript / Document Section */}
+      {/* For PDFs: Executive Summary & Overview Card */}
+      {isPdf && (
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-[#1A1A1A]/15 p-5 sm:p-7 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-[#1A1A1A]/10 pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <h3 className="font-['Baskervville',serif] text-lg sm:text-xl font-bold text-[#1A1A1A]">
+                Document Summary & Highlights
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900 transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Open Reader</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+
+          {analysis.summary ? (
+            <div className="text-xs sm:text-sm text-[#1A1A1A]/90 whitespace-pre-wrap leading-relaxed font-sans">
+              {analysis.summary}
+            </div>
+          ) : docInfo.extractedSummary ? (
+            <div className="space-y-4">
+              <p className="text-xs sm:text-sm text-[#1A1A1A]/90 leading-relaxed">
+                {docInfo.extractedSummary.overview}
+              </p>
+
+              {docInfo.extractedSummary.takeaways.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#1A1A1A]/80">
+                    <ListChecks className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Key Takeaways</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {docInfo.extractedSummary.takeaways.slice(0, 3).map((takeaway, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#FDFCF0] border border-[#1A1A1A]/10 text-xs text-[#1A1A1A]/90"
+                      >
+                        <span className="w-4 h-4 rounded-full bg-[#E5D7FA] text-[#1A1A1A] font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                          {idx + 1}
+                        </span>
+                        <span>{takeaway}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* For Videos: Summary Card if present */}
+      {!isPdf && analysis.summary && (
+        <div className="bg-white rounded-2xl border border-[#1A1A1A]/15 p-5 sm:p-6 shadow-xs space-y-2">
+          <h3 className="font-['Baskervville',serif] text-lg font-bold text-[#1A1A1A]">
+            Executive Summary
+          </h3>
+          <div className="text-xs sm:text-sm text-[#1A1A1A]/90 whitespace-pre-wrap leading-relaxed font-sans">
+            {analysis.summary}
+          </div>
+        </div>
+      )}
+
+      {/* Document Reader or Transcript Section */}
       <div className="space-y-2">
         <div className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl bg-[#FDFCF0] border border-[#1A1A1A]/10">
           <button
@@ -118,15 +215,23 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-2 sm:gap-2.5 text-xs sm:text-sm font-bold text-[#1A1A1A] hover:opacity-80 transition-opacity"
           >
-            <FileText className="w-4 h-4 text-[#8A8A8A]" />
+            {isPdf ? (
+              <BookOpen className="w-4 h-4 text-[#8A8A8A]" />
+            ) : (
+              <FileText className="w-4 h-4 text-[#8A8A8A]" />
+            )}
             <span className="tracking-wide">
-              {isPdf ? 'FULL DOCUMENT TEXT' : 'FULL TRANSCRIPT'}
+              {isPdf ? 'INTERACTIVE DOCUMENT READER' : 'FULL TRANSCRIPT'}
             </span>
-            {hasSegments && (
+            {isPdf ? (
+              <span className="text-[11px] font-normal text-[#8A8A8A]">
+                ({docInfo.totalPages} pages • ~{docInfo.readingTimeMinutes} min read)
+              </span>
+            ) : hasSegments ? (
               <span className="text-[11px] font-normal text-[#8A8A8A]">
                 ({analysis.segments?.length} segments)
               </span>
-            )}
+            ) : null}
             {expanded ? (
               <ChevronUp className="w-4 h-4 text-[#8A8A8A]" />
             ) : (
@@ -135,7 +240,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
           </button>
 
           <div className="flex items-center gap-2">
-            {expanded && hasSegments && (
+            {expanded && !isPdf && hasSegments && (
               <div className="inline-flex rounded-lg border border-[#1A1A1A]/10 bg-white p-0.5 text-xs">
                 <button
                   type="button"
@@ -166,7 +271,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
               type="button"
               onClick={handleCopy}
               className="p-1.5 rounded-lg border border-[#1A1A1A]/10 bg-white hover:bg-[#FDFCF0] text-[#1A1A1A] text-xs transition-colors"
-              title="Copy transcript"
+              title={isPdf ? 'Copy full document text' : 'Copy transcript'}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
@@ -174,45 +279,57 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
         </div>
 
         {expanded && (
-          <div className="p-4 sm:p-5 rounded-xl bg-[#FDFCF0]/60 border border-[#1A1A1A]/10 max-h-96 overflow-y-auto text-xs sm:text-sm text-[#1A1A1A]/90 font-sans leading-relaxed animate-fade-in">
-            {hasSegments && viewMode === 'timestamped' ? (
-              <div className="space-y-2">
-                {analysis.segments?.map((seg: TranscriptSegment, idx: number) => {
-                  const youtubeLink = analysis.video_id
-                    ? `https://www.youtube.com/watch?v=${analysis.video_id}&t=${Math.floor(seg.start)}`
-                    : null;
+          isPdf ? (
+            <div className="pt-2 animate-fade-in">
+              <DocumentReader
+                pages={docInfo.pages}
+                title={analysis.title || 'Document'}
+                totalPages={docInfo.totalPages}
+                totalWords={docInfo.totalWords}
+                readingTimeMinutes={docInfo.readingTimeMinutes}
+              />
+            </div>
+          ) : (
+            <div className="p-4 sm:p-5 rounded-xl bg-[#FDFCF0]/60 border border-[#1A1A1A]/10 max-h-96 overflow-y-auto text-xs sm:text-sm text-[#1A1A1A]/90 font-sans leading-relaxed animate-fade-in">
+              {hasSegments && viewMode === 'timestamped' ? (
+                <div className="space-y-2">
+                  {analysis.segments?.map((seg: TranscriptSegment, idx: number) => {
+                    const youtubeLink = analysis.video_id
+                      ? `https://www.youtube.com/watch?v=${analysis.video_id}&t=${Math.floor(seg.start)}`
+                      : null;
 
-                  return (
-                    <div key={idx} className="flex items-start gap-2.5 py-1 hover:bg-[#1A1A1A]/5 rounded px-2 transition-colors">
-                      {youtubeLink ? (
-                        <a
-                          href={youtubeLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded shrink-0 transition-colors"
-                          title="Open on YouTube at this timestamp"
-                        >
-                          <Clock className="w-3 h-3" />
-                          <span>{formatSeconds(seg.start)}</span>
-                          <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                        </a>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
-                          <Clock className="w-3 h-3" />
-                          <span>{formatSeconds(seg.start)}</span>
-                        </span>
-                      )}
-                      <p className="text-[#1A1A1A]/90 leading-relaxed">{seg.text}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="whitespace-pre-wrap">
-                {analysis.transcript || 'No transcript text available.'}
-              </div>
-            )}
-          </div>
+                    return (
+                      <div key={idx} className="flex items-start gap-2.5 py-1 hover:bg-[#1A1A1A]/5 rounded px-2 transition-colors">
+                        {youtubeLink ? (
+                          <a
+                            href={youtubeLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded shrink-0 transition-colors"
+                            title="Open on YouTube at this timestamp"
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>{formatSeconds(seg.start)}</span>
+                            <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                            <Clock className="w-3 h-3" />
+                            <span>{formatSeconds(seg.start)}</span>
+                          </span>
+                        )}
+                        <p className="text-[#1A1A1A]/90 leading-relaxed">{seg.text}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap">
+                  {analysis.transcript || 'No transcript text available.'}
+                </div>
+              )}
+            </div>
+          )
         )}
       </div>
 
