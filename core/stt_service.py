@@ -34,6 +34,7 @@ class STTResult:
     """
     text: str
     segments: List[Dict[str, Any]] = field(default_factory=list)
+    source: str = ""
 
 logger = get_logger(__name__)
 
@@ -219,7 +220,7 @@ class WhisperSTTProvider:
                     f"[WhisperSTT] Transcribed {len(text)} chars, "
                     f"{len(seg_dicts)} segments (faster-whisper)"
                 )
-                return STTResult(text=text, segments=seg_dicts)
+                return STTResult(text=text, segments=seg_dicts, source="whisper")
 
             else:
                 # Legacy openai-whisper — has segment-level output too
@@ -243,7 +244,7 @@ class WhisperSTTProvider:
                     f"[WhisperSTT] Transcribed {len(text)} chars, "
                     f"{len(seg_dicts)} segments (openai-whisper)"
                 )
-                return STTResult(text=text, segments=seg_dicts)
+                return STTResult(text=text, segments=seg_dicts, source="whisper")
 
         except Exception as e:
             logger.error(f"[WhisperSTT] Segment transcription failed: {e}")
@@ -520,7 +521,7 @@ class STTService:
                 text = provider.transcribe(audio_path, lang_code)
                 if progress_callback:
                     progress_callback("stt", "Transcription complete (Groq Whisper)")
-                return STTResult(text=text, segments=[])
+                return STTResult(text=text, segments=[], source="groq")
             except Exception as e:
                 logger.warning(f"[STTService] Groq failed, falling back to Whisper: {e}")
                 provider = self._get_whisper_provider()
@@ -536,7 +537,7 @@ class STTService:
                 text = provider.transcribe(audio_path, language)
                 if progress_callback:
                     progress_callback("stt", "Transcription complete (Sarvam)")
-                return STTResult(text=text, segments=[])
+                return STTResult(text=text, segments=[], source="sarvam")
             except Exception as e:
                 logger.warning(f"[STTService] Sarvam failed, falling back to Whisper: {e}")
                 provider = self._get_whisper_provider()
@@ -627,12 +628,15 @@ class STTService:
         all_segments: List[Dict[str, Any]] = []
         text_parts: List[str] = []
         time_offset = 0.0
+        merged_source = ""
 
         for i in range(total):
             if i not in results or not results[i].text:
                 continue
             chunk = results[i]
             text_parts.append(chunk.text)
+            if not merged_source:
+                merged_source = chunk.source
 
             if chunk.segments:
                 for seg in chunk.segments:
@@ -656,7 +660,7 @@ class STTService:
         if progress_callback:
             progress_callback("stt", f"Transcription complete ({total} chunks)")
 
-        return STTResult(text=combined_text, segments=all_segments)
+        return STTResult(text=combined_text, segments=all_segments, source=merged_source)
 
 
 # Singleton instance

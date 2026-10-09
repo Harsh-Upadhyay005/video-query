@@ -94,7 +94,7 @@ class AudioPipeline:
         video_id = parse_video_id(source) if source_type == SourceType.YOUTUBE else None
 
         # FAST PATH: Caption-first retrieval for YouTube videos
-        if source_type == SourceType.YOUTUBE and video_id:
+        if source_type == SourceType.YOUTUBE and video_id and self.stt_service.stt_provider_type != "groq":
             logger.info(f"[AudioPipeline] Checking caption-first path for YouTube video_id={video_id}")
             if progress_callback:
                 progress_callback("captions", "Checking for captions and cached transcript...", 8)
@@ -136,6 +136,8 @@ class AudioPipeline:
                 logger.info("[AudioPipeline] Captions unavailable or low quality. Proceeding to audio download + STT fallback.")
                 if progress_callback:
                     progress_callback("audio_processing", "Captions unavailable. Falling back to audio download...", 12)
+        elif source_type == SourceType.YOUTUBE and video_id:
+            logger.info("[AudioPipeline] Skipping caption-first path: Groq STT is configured")
         
         # STEP 1: Download/extract audio
         logger.info("[AudioPipeline] STEP 1: Audio extraction")
@@ -236,7 +238,7 @@ class AudioPipeline:
         logger.info("[AudioPipeline] STEP 5: Title generation (from source)")
         
         title = self._generate_title_from_source(source, source_type)
-        stt_source_name = "sarvam" if "hin" in language.lower() else "whisper"
+        stt_source_name = stt_result.source or ("sarvam" if "hin" in language.lower() else "whisper")
         logger.info(f"[AudioPipeline]   Title: {title} (STT source: {stt_source_name})")
 
         # Save to video cache if YouTube
