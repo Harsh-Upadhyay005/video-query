@@ -9,11 +9,8 @@ import {
   Search,
   Copy,
   Check,
-  Type,
   AlignLeft,
-  Clock,
   X,
-  Compass
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { DocumentPage } from '../utils/documentHelper';
@@ -22,7 +19,7 @@ interface DocumentReaderProps {
   pages: DocumentPage[];
   title?: string;
   totalPages: number;
-  totalWords: number;
+  totalWords?: number;
   readingTimeMinutes: number;
   className?: string;
 }
@@ -35,7 +32,6 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
   pages,
   title = 'Document',
   totalPages,
-  totalWords,
   readingTimeMinutes,
   className = '',
 }) => {
