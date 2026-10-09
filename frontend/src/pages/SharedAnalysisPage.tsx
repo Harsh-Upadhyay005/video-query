@@ -14,8 +14,7 @@ import {
   Loader2,
   FileText,
   BookOpen,
-  BookMarked,
-  Layers,
+
   ListChecks,
   Compass,
   ArrowRight

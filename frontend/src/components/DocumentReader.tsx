@@ -12,8 +12,7 @@ import {
   Type,
   AlignLeft,
   Clock,
-  Layers,
-  Sparkles,
+
   X
 } from 'lucide-react';
 import type { DocumentPage } from '../utils/documentHelper';
