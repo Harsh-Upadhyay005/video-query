@@ -12,7 +12,7 @@ import os
 from core.validators import InputValidator
 from core.logger import get_logger
 from core.exceptions import ValidationError
-from core.auth_middleware import get_current_user, AuthUser
+from core.auth_middleware import get_current_user, get_current_user_optional, AuthUser
 from core.chat_memory import get_chat_memory
 from main import get_rag_chain_for_source
 
@@ -48,7 +48,7 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_transcript(
     request: ChatRequest,
-    current_user: AuthUser = Depends(get_current_user)
+    current_user: Optional[AuthUser] = Depends(get_current_user_optional)
 ):
     """
     Ask questions about a previously analyzed transcript using intelligent RAG.
@@ -85,7 +85,8 @@ async def chat_with_transcript(
         session_id = str(request.session_id).strip() if request.session_id else ""
         environment = os.getenv("ENVIRONMENT", "development").lower()
         debug_mode = bool(request.debug) and environment != "production"
-        
+        user_id = current_user.id if current_user else "guest"
+
         if session_id:
             logger.info(f"[Chat] Looking for session: {session_id}")
             rag_chain = get_rag_chain_for_source(session_id)
@@ -96,32 +97,26 @@ async def chat_with_transcript(
                 logger.warning(f"[Chat] No RAG chain found for session: {session_id}")
                 raise HTTPException(
                     status_code=404,
-                    detail="No transcript found for this session. Analyze the video or document again, then retry chat."
+                    detail="No transcript found for this session. The server may have restarted — please analyze the video or document again."
                 )
-        elif environment == "production":
-            raise HTTPException(
-                status_code=400,
-                detail="session_id is required. Analyze a video or document first, then chat with that session."
-            )
         else:
+            # No session_id — try most recent in all environments
             from main import get_most_recent_rag_chain, list_all_rag_sessions
-            logger.info("[Chat] No session_id provided, using most recent RAG chain (development only)")
+            logger.info("[Chat] No session_id provided, using most recent RAG chain")
             rag_chain = get_most_recent_rag_chain()
             
-            if rag_chain:
-                logger.info("[Chat]   Using most recent RAG chain")
-            else:
+            if not rag_chain:
                 available_sessions = list_all_rag_sessions()
-                logger.error(f"[Chat] No RAG chains available. Available sessions: {available_sessions}")
+                logger.error(f"[Chat] No RAG chains available. Sessions: {available_sessions}")
                 raise HTTPException(
                     status_code=400,
-                    detail="No transcript available for chat. Please analyze a video/document first."
+                    detail="No transcript available for chat. Please analyze a video or document first."
                 )
-        
+
         # Persist user message
         memory = get_chat_memory()
         memory.save_message(
-            user_id=current_user.id,
+            user_id=user_id,
             session_id=session_id or "default",
             role="user",
             content=validated_question,
@@ -153,7 +148,7 @@ async def chat_with_transcript(
             
             # Persist assistant response
             memory.save_message(
-                user_id=current_user.id,
+                user_id=user_id,
                 session_id=session_id or "default",
                 role="assistant",
                 content=answer_text,
@@ -193,20 +188,14 @@ async def chat_with_transcript(
 @router.get("/chat/history/{session_id}")
 async def get_chat_history(
     session_id: str,
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: Optional[AuthUser] = Depends(get_current_user_optional),
     limit: int = 100
 ):
-    """
-    Get chat history for a session.
-    
-    Returns the conversation history for the authenticated user and given session.
-    - **session_id**: The session/job ID
-    - **limit**: Maximum number of messages to return (default 100)
-    """
     try:
         memory = get_chat_memory()
+        user_id = current_user.id if current_user else "guest"
         messages = memory.get_history(
-            user_id=current_user.id,
+            user_id=user_id,
             session_id=session_id,
             limit=limit,
         )
@@ -222,28 +211,14 @@ async def get_chat_history(
 
 @router.get("/chat/sessions")
 async def list_chat_sessions(
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: Optional[AuthUser] = Depends(get_current_user_optional),
     limit: int = 50
 ):
-    """
-    List all chat sessions for the current user with their latest message.
-    
-    Returns a list of sessions with:
-    - session_id
-    - last_message (truncated)
-    - last_role
-    - updated_at
-    """
     try:
         memory = get_chat_memory()
-        sessions = memory.list_sessions(
-            user_id=current_user.id,
-            limit=limit,
-        )
-        return {
-            "sessions": sessions,
-            "count": len(sessions),
-        }
+        user_id = current_user.id if current_user else "guest"
+        sessions = memory.list_sessions(user_id=user_id, limit=limit)
+        return {"sessions": sessions, "count": len(sessions)}
     except Exception as e:
         logger.error(f"[Chat] Failed to list sessions: {e}")
         raise HTTPException(status_code=500, detail="Failed to list chat sessions")
@@ -252,7 +227,7 @@ async def list_chat_sessions(
 @router.delete("/chat/session/{session_id}")
 async def clear_chat_session(
     session_id: str,
-    current_user: AuthUser = Depends(get_current_user)
+    current_user: Optional[AuthUser] = Depends(get_current_user_optional)
 ):
     """
     Clear a chat session and its associated context.
@@ -271,7 +246,8 @@ async def clear_chat_session(
         
         # Clear chat memory
         memory = get_chat_memory()
-        memory.clear_session(user_id=current_user.id, session_id=session_id)
+        user_id = current_user.id if current_user else "guest"
+        memory.clear_session(user_id=user_id, session_id=session_id)
         
         if deleted:
             logger.info(f"[Chat]   Successfully deleted session: {session_id}")
