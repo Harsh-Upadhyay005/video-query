@@ -198,7 +198,26 @@ def download_youtube_audio(url: str) -> str:
     if cookie_file and not Path(cookie_file).is_file():
         download_errors.append(f"Configured cookie file not found: {cookie_file}")
         cookie_file = None
-    
+
+    # Check if WAV already exists for this video (skip re-download)
+    try:
+        _probe_opts = {
+            "quiet": True, "no_warnings": True, "simulate": True,
+            "socket_timeout": 15,
+            "outtmpl": output_path,
+            "restrictfilenames": True,
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        }
+        with yt_dlp.YoutubeDL(_probe_opts) as _ydl:
+            _info = _ydl.extract_info(url, download=False)
+            if _info:
+                _expected_wav = os.path.splitext(_ydl.prepare_filename(_info))[0] + ".wav"
+                if os.path.exists(_expected_wav):
+                    logger.info(f"[YouTubeDownload] WAV already exists, skipping download: {_expected_wav}")
+                    return _expected_wav
+    except Exception as _e:
+        logger.debug(f"[YouTubeDownload] Pre-check failed (will proceed to download): {_e}")
+
     # STRATEGY 1: Try WITHOUT cookies first (works for most public videos)
     logger.info("[YouTubeDownload] Strategy 1: Attempting download without cookies...")
     
@@ -236,6 +255,7 @@ def download_youtube_audio(url: str) -> str:
                 }],
                 "retries": 2,
                 "fragment_retries": 2,
+                "socket_timeout": 30,
             }
             if cookie_file:
                 options["cookiefile"] = cookie_file
@@ -243,10 +263,16 @@ def download_youtube_audio(url: str) -> str:
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=True)
                 if info:
-                    filename = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
-                    if os.path.exists(filename):
-                        logger.info(f"[YouTubeDownload] ✅ SUCCESS (no cookies needed): {filename}")
-                        return filename
+                    expected = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
+                    if os.path.exists(expected):
+                        logger.info(f"[YouTubeDownload] ✅ SUCCESS (no cookies needed): {expected}")
+                        return expected
+                    # Fallback: scan downloads dir for the wav by title stem
+                    stem = Path(ydl.prepare_filename(info)).stem
+                    for f in Path(DOWNLOAD_DIR).glob(f"{stem}*.wav"):
+                        if "_chunk_" not in f.name:
+                            logger.info(f"[YouTubeDownload] ✅ SUCCESS (found by stem): {f}")
+                            return str(f)
                     
         except Exception as e:
             error_str = str(e).lower()
@@ -333,6 +359,7 @@ def download_youtube_audio(url: str) -> str:
                 }],
                 "retries": 2,
                 "fragment_retries": 2,
+                "socket_timeout": 30,
             }
             if cookie_file:
                 options["cookiefile"] = cookie_file
@@ -342,10 +369,15 @@ def download_youtube_audio(url: str) -> str:
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=True)
                 if info:
-                    filename = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
-                    if os.path.exists(filename):
-                        logger.info(f"[YouTubeDownload] ✅ SUCCESS (with {display_name} cookies): {filename}")
-                        return filename
+                    expected = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
+                    if os.path.exists(expected):
+                        logger.info(f"[YouTubeDownload] ✅ SUCCESS (with {display_name} cookies): {expected}")
+                        return expected
+                    stem = Path(ydl.prepare_filename(info)).stem
+                    for f in Path(DOWNLOAD_DIR).glob(f"{stem}*.wav"):
+                        if "_chunk_" not in f.name:
+                            logger.info(f"[YouTubeDownload] ✅ SUCCESS (with {display_name}, found by stem): {f}")
+                            return str(f)
                         
         except Exception as e:
             error_str = str(e).lower()
