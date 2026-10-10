@@ -190,18 +190,8 @@ def download_youtube_audio(url: str) -> str:
         RuntimeError: If all download strategies fail with clear error message
     """
     logger.info(f"[YouTubeDownload] Starting download: {url}")
-    
-    # Check Node.js availability
-    if shutil.which("node") is None:
-        error_msg = (
-            "Node.js is required for YouTube downloads. "
-            "Install Node.js from https://nodejs.org/ and ensure 'node' is in your PATH."
-        )
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
-    node_path = shutil.which("node") or "node"
     last_error = None
     download_errors = []
     cookie_file = os.getenv("YOUTUBE_COOKIES_FILE")
@@ -213,9 +203,9 @@ def download_youtube_audio(url: str) -> str:
     logger.info("[YouTubeDownload] Strategy 1: Attempting download without cookies...")
     
     client_strategies = [
-        ("web", "Web client"),
         ("android", "Android client"),
         ("ios", "iOS client"),
+        ("web", "Web client"),
     ]
     
     for client, description in client_strategies:
@@ -230,11 +220,9 @@ def download_youtube_audio(url: str) -> str:
                 "noplaylist": True,
                 "quiet": True,
                 "no_warnings": True,
-                "js_runtimes": {"node": {"executable": node_path}},
                 "extractor_args": {
                     "youtube": {
                         "player_client": [client],
-                        "player_skip": ["webpage", "configs"],
                     }
                 },
                 "http_headers": {
@@ -329,10 +317,9 @@ def download_youtube_audio(url: str) -> str:
                 "noplaylist": True,
                 "quiet": True,
                 "no_warnings": True,
-                "js_runtimes": {"node": {"executable": node_path}},
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["web"],
+                        "player_client": ["android"],
                     }
                 },
                 "http_headers": {
