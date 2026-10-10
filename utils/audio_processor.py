@@ -171,260 +171,201 @@ def _build_yt_dlp_options(output_path: str, node_path: str, client: str = "andro
     return options
 
 
+def _export_cookies_to_file(browser: str, dest: str) -> bool:
+    """
+    Export cookies from a browser profile copy to a Netscape cookies.txt file.
+    Copies the profile first so the export works even when the browser is open.
+    Returns True if export succeeded.
+    """
+    import tempfile
+    try:
+        opts = {
+            "quiet": True, "no_warnings": True,
+            "cookiesfrombrowser": (browser,),
+            "cookiefile": dest,
+            "simulate": True,
+            "skip_download": True,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.extract_info("https://www.youtube.com/", download=False)
+        return Path(dest).is_file() and Path(dest).stat().st_size > 0
+    except Exception as e:
+        logger.debug(f"[YouTubeDownload] Cookie export from {browser} failed: {e}")
+        return False
+
+
+def _find_wav(ydl: "yt_dlp.YoutubeDL", info: dict) -> Optional[str]:
+    """Return the WAV path after a completed download, using stem-glob as fallback."""
+    expected = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
+    if os.path.exists(expected):
+        return expected
+    stem = Path(ydl.prepare_filename(info)).stem
+    for f in Path(DOWNLOAD_DIR).glob(f"{stem}*.wav"):
+        if "_chunk_" not in f.name:
+            return str(f)
+    return None
+
+
+def _base_ydl_opts(output_path: str) -> dict:
+    return {
+        "format": "bestaudio/best",
+        "outtmpl": output_path,
+        "restrictfilenames": True,
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "socket_timeout": 60,
+        "retries": 3,
+        "fragment_retries": 3,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "wav",
+            "preferredquality": "192",
+        }],
+    }
+
+
 def download_youtube_audio(url: str) -> str:
     """
-    Download audio from YouTube URL with robust fallback strategies.
-    
+    Download audio from a YouTube URL.
+
     Strategy:
-    1. Try without cookies (works for most public videos)
-    2. If authentication needed, try with browser cookies
-    3. Handle browser lock gracefully
-    
+    1. Skip re-download if WAV already exists.
+    2. Try with browser cookies (Chrome/Edge/Firefox) — copies profile so
+       it works even when the browser is open. Cookies give yt-dlp the PO
+       token YouTube now requires for stream delivery.
+    3. Try with an explicit YOUTUBE_COOKIES_FILE if set.
+    4. Try without any cookies (last resort — often throttled by YouTube).
+
     Args:
         url: YouTube URL
-        
     Returns:
         Path to downloaded WAV file
-        
     Raises:
-        RuntimeError: If all download strategies fail with clear error message
+        RuntimeError: If all strategies fail.
     """
     logger.info(f"[YouTubeDownload] Starting download: {url}")
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
-    last_error = None
-    download_errors = []
-    cookie_file = os.getenv("YOUTUBE_COOKIES_FILE")
-    if cookie_file and not Path(cookie_file).is_file():
-        download_errors.append(f"Configured cookie file not found: {cookie_file}")
-        cookie_file = None
+    download_errors: list = []
 
-    # Check if WAV already exists for this video (skip re-download)
+    # --- STEP 0: skip if WAV already on disk ---
     try:
-        _probe_opts = {
+        probe_opts = {
             "quiet": True, "no_warnings": True, "simulate": True,
             "socket_timeout": 15,
             "outtmpl": output_path,
             "restrictfilenames": True,
             "extractor_args": {"youtube": {"player_client": ["android"]}},
         }
-        with yt_dlp.YoutubeDL(_probe_opts) as _ydl:
+        with yt_dlp.YoutubeDL(probe_opts) as _ydl:
             _info = _ydl.extract_info(url, download=False)
             if _info:
-                _expected_wav = os.path.splitext(_ydl.prepare_filename(_info))[0] + ".wav"
-                if os.path.exists(_expected_wav):
-                    logger.info(f"[YouTubeDownload] WAV already exists, skipping download: {_expected_wav}")
-                    return _expected_wav
+                existing = _find_wav(_ydl, _info)
+                if existing:
+                    logger.info(f"[YouTubeDownload] WAV already exists, skipping download: {existing}")
+                    return existing
     except Exception as _e:
-        logger.debug(f"[YouTubeDownload] Pre-check failed (will proceed to download): {_e}")
+        logger.debug(f"[YouTubeDownload] Pre-check skipped: {_e}")
 
-    # STRATEGY 1: Try WITHOUT cookies first (works for most public videos)
-    logger.info("[YouTubeDownload] Strategy 1: Attempting download without cookies...")
-    
-    client_strategies = [
-        ("android", "Android client"),
-        ("ios", "iOS client"),
-        ("web", "Web client"),
-    ]
-    
-    for client, description in client_strategies:
-        try:
-            logger.info(f"[YouTubeDownload]   Trying {description} (no cookies)...")
-            
-            # Build options WITHOUT cookies
-            options = {
-                "format": "bestaudio/best",
-                "outtmpl": output_path,
-                "restrictfilenames": True,
-                "noplaylist": True,
-                "quiet": True,
-                "no_warnings": True,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": [client],
-                    }
-                },
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "wav",
-                    "preferredquality": "192",
-                }],
-                "retries": 2,
-                "fragment_retries": 2,
-                "socket_timeout": 30,
-            }
-            if cookie_file:
-                options["cookiefile"] = cookie_file
-            
-            with yt_dlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if info:
-                    expected = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
-                    if os.path.exists(expected):
-                        logger.info(f"[YouTubeDownload] ✅ SUCCESS (no cookies needed): {expected}")
-                        return expected
-                    # Fallback: scan downloads dir for the wav by title stem
-                    stem = Path(ydl.prepare_filename(info)).stem
-                    for f in Path(DOWNLOAD_DIR).glob(f"{stem}*.wav"):
-                        if "_chunk_" not in f.name:
-                            logger.info(f"[YouTubeDownload] ✅ SUCCESS (found by stem): {f}")
-                            return str(f)
-                    
-        except Exception as e:
-            error_str = str(e).lower()
-            download_errors.append(f"{description} (no cookies): {str(e)[:100]}")
-            
-            # Check if authentication is actually required
-            needs_auth = any(keyword in error_str for keyword in [
-                "sign in",
-                "login",
-                "authenticate",
-                "private",
-                "members-only",
-                "premium"
-            ])
-            
-            if needs_auth:
-                logger.info(f"[YouTubeDownload]   Authentication required, will try cookies")
-                break  # Move to cookie strategy
-            else:
-                logger.debug(f"[YouTubeDownload]   Failed: {str(e)[:100]}")
-                last_error = e
-                continue
-    
-    # STRATEGY 2: Try WITH browser cookies if strategy 1 failed
-    logger.info("[YouTubeDownload] Strategy 2: Attempting download with browser cookies...")
-    
-    # Find available browsers or use an explicitly supplied cookie file.
-    available_browsers = []
+    import tempfile
+
+    # --- STEP 1: browser cookies (primary path, needed for PO token) ---
     browser_candidates = [
-        ("edge", "Edge"),       # Try Edge first (usually not running)
-        ("firefox", "Firefox"), # Then Firefox
-        ("chrome", "Chrome"),   # Chrome last (often running)
+        ("chrome", "Chrome"),
+        ("edge", "Edge"),
+        ("firefox", "Firefox"),
         ("brave", "Brave"),
     ]
-    
-    for browser_name, display_name in browser_candidates:
-        if _find_browser_executable(browser_name):
-            available_browsers.append((browser_name, display_name))
-            logger.info(f"[YouTubeDownload]   Found browser: {display_name}")
-    
-    if not available_browsers and not cookie_file:
-        # No browsers found - return clear error
-        error_msg = (
-            "YouTube download failed and no browsers are available for authentication.\n\n"
-            "The video may require login. To fix:\n"
-            "1. Install Chrome, Edge, or Firefox and login to YouTube\n"
-            "2. Close the browser and try the download again\n"
-            "   (or set YOUTUBE_COOKIES_FILE to a Netscape cookies.txt file)\n\n"
-            "Alternatively: Download the video manually and upload the file."
-        )
-        logger.error(f"[YouTubeDownload] {error_msg}")
-        if download_errors:
-            logger.error(f"[YouTubeDownload] Previous errors: {'; '.join(download_errors)}")
-        raise RuntimeError(error_msg)
-    
-    cookie_sources = [(None, "cookie file")] if cookie_file else available_browsers
 
-    # Try each configured cookie source.
-    for browser_name, display_name in cookie_sources:
+    cookie_file_env = os.getenv("YOUTUBE_COOKIES_FILE")
+    if cookie_file_env and not Path(cookie_file_env).is_file():
+        logger.warning(f"[YouTubeDownload] YOUTUBE_COOKIES_FILE not found: {cookie_file_env}")
+        cookie_file_env = None
+
+    for browser_name, display_name in browser_candidates:
+        if not _find_browser_executable(browser_name):
+            continue
+
+        logger.info(f"[YouTubeDownload] Trying with {display_name} cookies...")
+        tmp_cookie = None
         try:
-            logger.info(f"[YouTubeDownload]   Trying with {display_name} cookies...")
-            
-            # Build options WITH cookies
-            options = {
-                "format": "bestaudio/best",
-                "outtmpl": output_path,
-                "restrictfilenames": True,
-                "noplaylist": True,
-                "quiet": True,
-                "no_warnings": True,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android"],
-                    }
-                },
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "wav",
-                    "preferredquality": "192",
-                }],
-                "retries": 2,
-                "fragment_retries": 2,
-                "socket_timeout": 30,
-            }
-            if cookie_file:
-                options["cookiefile"] = cookie_file
-            else:
-                options["cookiesfrombrowser"] = (browser_name,)
-            
-            with yt_dlp.YoutubeDL(options) as ydl:
+            with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tf:
+                tmp_cookie = tf.name
+
+            exported = _export_cookies_to_file(browser_name, tmp_cookie)
+            if not exported:
+                logger.debug(f"[YouTubeDownload] Could not export {display_name} cookies, skipping")
+                continue
+
+            opts = _base_ydl_opts(output_path)
+            opts["cookiefile"] = tmp_cookie
+
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 if info:
-                    expected = os.path.splitext(ydl.prepare_filename(info))[0] + ".wav"
-                    if os.path.exists(expected):
-                        logger.info(f"[YouTubeDownload] ✅ SUCCESS (with {display_name} cookies): {expected}")
-                        return expected
-                    stem = Path(ydl.prepare_filename(info)).stem
-                    for f in Path(DOWNLOAD_DIR).glob(f"{stem}*.wav"):
-                        if "_chunk_" not in f.name:
-                            logger.info(f"[YouTubeDownload] ✅ SUCCESS (with {display_name}, found by stem): {f}")
-                            return str(f)
-                        
+                    wav = _find_wav(ydl, info)
+                    if wav:
+                        logger.info(f"[YouTubeDownload] ✅ SUCCESS with {display_name} cookies: {wav}")
+                        return wav
+
         except Exception as e:
-            error_str = str(e).lower()
-            download_errors.append(f"{display_name} cookies: {str(e)[:100]}")
-            last_error = e
-            
-            # Check for browser lock error
-            if "could not copy" in error_str and "cookie" in error_str:
-                logger.warning(
-                    f"[YouTubeDownload]   {display_name} is running (cookies locked). "
-                    "Trying next browser..."
-                )
-                continue
-            
-            # Check for other specific errors
-            if "private" in error_str or "members-only" in error_str:
-                raise RuntimeError(
-                    "This video is private or members-only and cannot be accessed. "
-                    "Please use a public video or upload the file directly."
-                )
-            
-            logger.debug(f"[YouTubeDownload]   Failed with {display_name}: {str(e)[:100]}")
-            continue
-    
-    # All strategies failed - provide helpful error message
-    error_summary = "\n".join(f"  • {err}" for err in download_errors[-5:])  # Last 5 errors
-    
-    browser_list = ", ".join(name for _, name in available_browsers) or "none"
-    
-    error_msg = (
-        f"YouTube download failed after trying multiple strategies.\n\n"
-        f"Attempted:\n"
-        f"1. Download without authentication  \n"
-        f"2. Download with browser cookies ({browser_list})  \n\n"
-        f"Recent errors:\n{error_summary}\n\n"
-        f"Possible solutions:\n"
-        f"1. If browsers are running: Close ALL browser windows and try again\n"
-        f"2. Login to YouTube in Edge/Firefox (usually easier than Chrome)\n"
-        f"3. Try a different YouTube video (this one may be restricted)\n"
-        f"4. Download the video manually and upload the MP3/MP4 file\n\n"
-        f"Video URL: {url}"
+            err_str = str(e)
+            download_errors.append(f"{display_name}: {err_str[:120]}")
+            logger.debug(f"[YouTubeDownload] {display_name} failed: {err_str[:120]}")
+            if "private" in err_str.lower() or "members-only" in err_str.lower():
+                raise RuntimeError("This video is private or members-only. Please use a public video or upload the file directly.")
+        finally:
+            if tmp_cookie and Path(tmp_cookie).exists():
+                try:
+                    Path(tmp_cookie).unlink()
+                except Exception:
+                    pass
+
+    # --- STEP 2: explicit cookie file ---
+    if cookie_file_env:
+        logger.info(f"[YouTubeDownload] Trying with YOUTUBE_COOKIES_FILE...")
+        try:
+            opts = _base_ydl_opts(output_path)
+            opts["cookiefile"] = cookie_file_env
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    wav = _find_wav(ydl, info)
+                    if wav:
+                        logger.info(f"[YouTubeDownload] ✅ SUCCESS with cookie file: {wav}")
+                        return wav
+        except Exception as e:
+            download_errors.append(f"cookie file: {str(e)[:120]}")
+
+    # --- STEP 3: no cookies last resort ---
+    logger.info(f"[YouTubeDownload] Trying without cookies (last resort)...")
+    try:
+        opts = _base_ydl_opts(output_path)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info:
+                wav = _find_wav(ydl, info)
+                if wav:
+                    logger.info(f"[YouTubeDownload] ✅ SUCCESS without cookies: {wav}")
+                    return wav
+    except Exception as e:
+        download_errors.append(f"no-cookies: {str(e)[:120]}")
+
+    error_summary = "\n".join(f"  • {e}" for e in download_errors[-5:])
+    raise RuntimeError(
+        f"YouTube download failed.\n\n"
+        f"Errors:\n{error_summary}\n\n"
+        f"To fix: make sure Chrome, Edge, or Firefox is installed and you are logged in to YouTube, "
+        f"then restart the app and try again.\n"
+        f"Alternatively, set YOUTUBE_COOKIES_FILE in .env to a Netscape cookies.txt export, "
+        f"or upload the video file directly.\n\nURL: {url}"
     )
-    
-    logger.error(f"[YouTubeDownload] All strategies failed")
-    logger.error(error_msg)
-    
-    raise RuntimeError(error_msg)
 
 
 def convert_to_wav(input_path: str) -> str:
