@@ -14,7 +14,9 @@ export default {
           muted: "#8A8A8A",
           border: "#E2E0D4",
           card: "#FFFFFF",
-        }
+        },
+        foreground: "#FFFFFF",
+        "muted-foreground": "#71717A",
       },
       fontFamily: {
         serif: ["Baskervville", "Georgia", "serif"],

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import './index.css';
 import { Header } from './components/Header';
 import { WisprHero } from './components/WisprHero';
-import { DictationPlayground } from './components/DictationPlayground';
+import { WorkflowPipeline } from './components/WorkflowPipeline';
 import { FeatureShowcase } from './components/FeatureShowcase';
 import { InteractiveChat } from './components/InteractiveChat';
 import { Footer } from './components/Footer';
@@ -140,7 +140,12 @@ function App() {
               onExplorePresets={handleExplorePresets}
               onNavigateToStudio={() => setActiveView('studio')}
             />
-            <DictationPlayground />
+            <WorkflowPipeline
+              onNavigateToStudio={() => {
+                setActiveView('studio');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
             <FeatureShowcase />
             <Footer onNavigateToStudio={() => {
               setActiveView('studio');
