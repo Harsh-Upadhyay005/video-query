@@ -52,6 +52,18 @@
   border: 1.5px solid #1A1A1A;
 }
 
+@media (pointer: fine) {
+  .pointer-fine\:inline-block {
+    display: inline-block !important;
+  }
+}
+
+@media (pointer: coarse) {
+  .pointer-coarse\:inline-block {
+    display: inline-block !important;
+  }
+}
+
 /* SVG Text Path Animation Keyframes fallback */
 @keyframes textPathSlide {
   0% {
