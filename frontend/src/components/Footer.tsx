@@ -1,5 +1,6 @@
 import type React from "react";
 import { Video, ExternalLink, Sparkles } from "lucide-react";
+import { FluidGradientText } from "@/components/fluid-gradient-text";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -10,10 +11,10 @@ interface FooterProps {
 export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
   return (
     <div className="relative bg-[#0A0A0A] text-white">
-      
+
       {/* 1. "Start videoQuerying" Section */}
       <section className="relative w-full py-16 sm:py-28 px-4 sm:px-6 flex flex-col items-center justify-center overflow-hidden border-b border-white/10">
-        
+
         {/* Blurry Warm Backdrop */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(248,158,53,0.08),transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,204,245,0.06),transparent_50%)]" />
@@ -82,14 +83,14 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
               <Video className="w-4.5 h-4.5" />
             </div>
             <div>
-              <span className="font-bold text-sm tracking-tight text-zinc-100">AI Video Agent</span>
-              <p className="text-[10px] text-zinc-500">Say it. Transcribe it. It&apos;s done.</p>
+              <span className="font-bold text-sm tracking-tight text-zinc-100"> Video Query</span>
+              <p className="text-[10px] text-zinc-500">Transform media & docs into searchable knowledge.</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs text-zinc-500">
-            <a href="#playground" className="hover:text-white transition-colors">Dictation Lab</a>
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
+            <a href="#tour" className="hover:text-white transition-colors">Product Tour</a>
+            <a href="#features" className="hover:text-white transition-colors">Capabilities</a>
             <a
               href={`${API_BASE_URL}/docs`}
               target="_blank"
@@ -101,10 +102,15 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
           </div>
 
           <div className="text-[10px] text-zinc-600 font-mono text-center md:text-right">
-            © {new Date().getFullYear()} AI Video Agent • Powered by OpenAI Whisper & Vector RAG
+            © {new Date().getFullYear()} AI Video Agent • Made with ❤️ by UpadhyayJI
           </div>
         </div>
       </footer>
+
+      {/* 3. Fluid Gradient Text Section */}
+      <div className="relative w-full border-t border-white/10 pt-10 pb-6 text-foreground overflow-hidden bg-black/40">
+        <FluidGradientText text="UpadhyayJI" />
+      </div>
     </div>
   );
 };

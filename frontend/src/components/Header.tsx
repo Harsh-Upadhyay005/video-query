@@ -149,11 +149,11 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Links & CTA */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <nav className="hidden lg:flex items-center gap-5 text-xs font-bold uppercase tracking-wider text-[#1A1A1A]/70">
-              <a href="#playground" className="hover:text-[#1A1A1A] transition-colors">
-                Dictation Lab
+              <a href="#tour" className="hover:text-[#1A1A1A] transition-colors">
+                Product Tour
               </a>
               <a href="#features" className="hover:text-[#1A1A1A] transition-colors">
-                Features
+                Capabilities
               </a>
             </nav>
 
