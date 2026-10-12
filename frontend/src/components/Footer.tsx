@@ -76,7 +76,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
       </section>
 
       {/* 2. Standard Legal/Footer Links */}
-      <footer className="py-8 sm:py-12 px-4 sm:px-6">
+      <footer className="pt-6 sm:pt-8 pb-3 sm:pb-4 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#E5D7FA] text-[#1A1A1A] flex items-center justify-center font-bold shrink-0">
@@ -108,7 +108,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
       </footer>
 
       {/* 3. Fluid Gradient Text Section */}
-      <div className="relative w-full border-t border-white/10 pt-10 pb-6 text-foreground overflow-hidden bg-black/40">
+      <div className="relative w-full border-t border-white/10 pt-1 pb-2 sm:pb-3 text-foreground overflow-hidden">
         <FluidGradientText text="UpadhyayJI" />
       </div>
     </div>

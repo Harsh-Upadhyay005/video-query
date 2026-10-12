@@ -20,7 +20,7 @@ export type FluidGradientTextProps = {
 export function FluidGradientText({
   text,
   svgViewBoxWidth = 1200,
-  svgViewBoxHeight = 300,
+  svgViewBoxHeight = 160,
   className = ""
 }: FluidGradientTextProps) {
   const gradientX1Raw = useMotionValue(0.5);
@@ -45,28 +45,28 @@ export function FluidGradientText({
 
   return (
     <div
-      className={`relative w-full overflow-hidden select-none after:absolute after:bottom-0 after:h-px after:w-full after:bg-current/15 ${className}`}
+      className={`relative w-full overflow-hidden select-none ${className}`}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
       <svg
-        className="w-full h-auto max-h-[220px] sm:max-h-[300px] translate-y-[20%] sm:translate-y-[25%] select-none overflow-visible"
+        className="w-full h-auto select-none overflow-visible block"
         viewBox={`0 0 ${svgViewBoxWidth} ${svgViewBoxHeight}`}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
         <text
           x="50%"
-          y="50%"
+          y="52%"
           textAnchor="middle"
           dominantBaseline="central"
           stroke="currentColor"
-          strokeOpacity="0.18"
+          strokeOpacity="0.22"
           strokeWidth="2.5"
           fill="url(#fluid_gradient_text_linear)"
           style={{
             fontFamily: "Outfit, Inter, system-ui, sans-serif",
-            fontSize: Math.min(svgViewBoxHeight * 0.72, (svgViewBoxWidth / (text.length * 0.65))),
+            fontSize: Math.min(130, (svgViewBoxWidth / (text.length * 0.72))),
             fontWeight: "900",
             letterSpacing: "-0.03em"
           }}
