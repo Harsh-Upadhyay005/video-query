@@ -1,0 +1,53 @@
+# ── Application packages — re-installed when app deps change ─────────────────
+
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-multipart==0.0.9
+
+# Audio / Video
+yt-dlp>=2025.01.26,<2027
+youtube-transcript-api>=0.6.2
+audioop-lts; python_version >= "3.13"
+pydub==0.25.1
+ffmpeg-python==0.2.0
+
+# STT cloud providers
+groq>=0.4.0
+
+# Translation
+deep-translator==1.11.4
+
+# LLM / LangChain
+langchain==0.2.16
+langchain-core==0.2.38
+langchain-community==0.2.16
+langchain-mistralai==0.1.12
+langchain-huggingface==0.0.3
+mistralai==0.4.2
+
+# RAG utilities
+tiktoken==0.7.0
+rank-bm25==0.2.2
+
+# Utilities
+python-dotenv==1.0.1
+requests==2.32.3
+numpy==1.26.4
+tqdm==4.66.5
+psutil==6.0.0
+
+# File Processing
+python-magic==0.4.27; sys_platform != "win32"
+PyPDF2==3.0.1
+
+# Supabase
+supabase
+
+# Authentication
+python-jose[cryptography]==3.3.0
+
+# HTTP
+httpx

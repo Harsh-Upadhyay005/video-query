@@ -52,8 +52,11 @@ vector_db_docs/
 metadata_store/
 *.db
 *.sqlite
-frontend/node_modules/
-frontend/dist/
+frontend/
+node_modules/
+chrome-extension/
+frontend/
+node_modules/
 debug-*.log
 
 # Temporary files
