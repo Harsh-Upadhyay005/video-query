@@ -35,6 +35,8 @@ venv.bak/
 docs/
 *.txt
 !requirements.txt
+!requirements-ml.txt
+!requirements-app.txt
 
 # Tests
 tests/

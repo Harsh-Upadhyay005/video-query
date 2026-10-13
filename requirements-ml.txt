@@ -1,8 +1,7 @@
 # ── Heavy ML packages — cached as a separate Docker layer ────────────────────
 # Only re-installed when THIS file changes.
-# torch is pulled in by faster-whisper + sentence-transformers.
-# Pin CPU-only torch to avoid downloading the 2 GB CUDA variant.
-torch==2.3.1+cpu --index-url https://download.pytorch.org/whl/cpu
+# Do NOT pin torch — let sentence-transformers pull the right version.
+# On a CPU-only image (no CUDA drivers) pip automatically picks the CPU build.
 
 # Embeddings + reranker
 sentence-transformers==3.0.1
@@ -11,5 +10,5 @@ huggingface-hub==0.24.6
 # Vector store
 chromadb==0.5.3
 
-# STT (local fallback — Groq is used in production but faster-whisper is the fallback)
+# STT local fallback (Groq is used in production; faster-whisper is the fallback)
 faster-whisper
