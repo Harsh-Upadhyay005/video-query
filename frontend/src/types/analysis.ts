@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript types for AI Video Agent
+ * Shared TypeScript types for Video Query
  */
 
 export interface TranscriptSegment {

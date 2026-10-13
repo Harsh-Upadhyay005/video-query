@@ -628,7 +628,7 @@ export const SharedAnalysisPage: React.FC<SharedAnalysisPageProps> = ({
             className="px-5 py-3 rounded-xl bg-[#1A1A1A] text-white hover:bg-black font-semibold text-xs sm:text-sm transition-all shadow-md shrink-0 flex items-center gap-2"
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Try AI Video Agent Free</span>
+            <span>Try Video Query Free</span>
           </button>
         </div>
       </main>

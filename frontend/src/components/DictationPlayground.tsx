@@ -266,7 +266,7 @@ export const DictationPlayground: React.FC = () => {
             120x faster <span className="italic font-light opacity-95 text-[#D9CCF5]">than watching</span>
           </h2>
           <p className="mt-4 sm:mt-6 text-emerald-100/80 text-sm sm:text-base md:text-lg leading-relaxed font-sans max-w-2xl mx-auto font-light">
-            Why sit through a two-hour recording? AI Video Agent ingests video streams in seconds, indexing the transcript for immediate, search-optimized answers.
+            Why sit through a two-hour recording? Video Query ingests video streams in seconds, indexing the transcript for immediate, search-optimized answers.
           </p>
         </div>
 
@@ -305,7 +305,7 @@ export const DictationPlayground: React.FC = () => {
             </div>
           </div>
 
-          {/* AI Video Agent Card - Enhanced Design */}
+          {/* Video Query Card - Enhanced Design */}
           <div className="lg:col-span-7 rounded-2xl sm:rounded-3xl overflow-hidden relative shadow-2xl min-h-[240px] sm:min-h-[280px] flex flex-col justify-between border-2 border-white/20 backdrop-blur-xl group hover:border-white/40 transition-all duration-300">
             {/* Animated gradient background */}
             <div className="absolute inset-0 bg-gradient-to-br from-purple-900/60 via-indigo-900/50 to-teal-900/60" />
@@ -326,7 +326,7 @@ export const DictationPlayground: React.FC = () => {
                   <div className="flex items-center gap-2 mb-2">
                     <Sparkles className="w-4 h-4 text-purple-300 animate-pulse" />
                     <span className="text-xs font-bold uppercase tracking-wider text-purple-200">
-                      AI Video Agent
+                      Video Query
                     </span>
                   </div>
                   

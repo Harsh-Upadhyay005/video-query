@@ -102,7 +102,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
           </div>
 
           <div className="text-[10px] text-zinc-600 font-mono text-center md:text-right">
-            © {new Date().getFullYear()} AI Video Agent • Made with ❤️ by UpadhyayJI
+            © {new Date().getFullYear()} Video Query • Made with ❤️ by UpadhyayJI
           </div>
         </div>
       </footer>
