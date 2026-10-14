@@ -233,6 +233,8 @@ credentials/
 .env.development
 .env.staging
 .env.production
+frontend/.env
+frontend/.env.*
 
 # Application data directories
 downloads/
