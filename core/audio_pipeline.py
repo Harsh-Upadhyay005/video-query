@@ -94,7 +94,9 @@ class AudioPipeline:
         video_id = parse_video_id(source) if source_type == SourceType.YOUTUBE else None
 
         # FAST PATH: Caption-first retrieval for YouTube videos
-        if source_type == SourceType.YOUTUBE and video_id and self.stt_service.stt_provider_type != "groq":
+        # Always try captions first — they are free, instant, and work without downloading.
+        # This path is independent of which STT provider is configured.
+        if source_type == SourceType.YOUTUBE and video_id:
             logger.info(f"[AudioPipeline] Checking caption-first path for YouTube video_id={video_id}")
             if progress_callback:
                 progress_callback("captions", "Checking for captions and cached transcript...", 8)

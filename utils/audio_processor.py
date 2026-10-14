@@ -215,13 +215,18 @@ def _base_ydl_opts(output_path: str) -> dict:
         "quiet": True,
         "no_warnings": True,
         "socket_timeout": 60,
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 5,
+        "fragment_retries": 5,
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
+        # tv_embedded bypasses bot-detection on headless/cloud servers without cookies
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tv_embedded", "web_creator", "android"],
+            }
+        },
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "wav",
@@ -343,19 +348,26 @@ def download_youtube_audio(url: str) -> str:
         except Exception as e:
             download_errors.append(f"cookie file: {str(e)[:120]}")
 
-    # --- STEP 3: no cookies last resort ---
-    logger.info(f"[YouTubeDownload] Trying without cookies (last resort)...")
-    try:
-        opts = _base_ydl_opts(output_path)
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if info:
-                wav = _find_wav(ydl, info)
-                if wav:
-                    logger.info(f"[YouTubeDownload] ✅ SUCCESS without cookies: {wav}")
-                    return wav
-    except Exception as e:
-        download_errors.append(f"no-cookies: {str(e)[:120]}")
+    # --- STEP 3: no cookies last resort — try multiple clients ---
+    for client in ["tv_embedded", "web_creator", "mweb", "android"]:
+        logger.info(f"[YouTubeDownload] Trying client={client} without cookies...")
+        try:
+            opts = _base_ydl_opts(output_path)
+            opts["extractor_args"] = {"youtube": {"player_client": [client]}}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    wav = _find_wav(ydl, info)
+                    if wav:
+                        logger.info(f"[YouTubeDownload] ✅ SUCCESS with client={client}: {wav}")
+                        return wav
+        except Exception as e:
+            err_str = str(e)
+            download_errors.append(f"client={client}: {err_str[:120]}")
+            if "private" in err_str.lower() or "members-only" in err_str.lower():
+                raise RuntimeError(
+                    "This video is private or members-only. Please use a public video or upload the file directly."
+                )
 
     error_summary = "\n".join(f"  • {e}" for e in download_errors[-5:])
     raise RuntimeError(
