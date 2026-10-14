@@ -239,20 +239,15 @@ def download_youtube_audio(url: str) -> str:
     """
     Download audio from a YouTube URL.
 
-    Strategy:
-    1. Skip re-download if WAV already exists.
-    2. Try with browser cookies (Chrome/Edge/Firefox) — copies profile so
-       it works even when the browser is open. Cookies give yt-dlp the PO
-       token YouTube now requires for stream delivery.
-    3. Try with an explicit YOUTUBE_COOKIES_FILE if set.
-    4. Try without any cookies (last resort — often throttled by YouTube).
+    Strategy (in order):
+    1. Skip re-download if WAV already exists on disk.
+    2. Try YOUTUBE_COOKIES_FILE if set in environment.
+    3. Try extracting cookies from installed browsers (local dev only).
+    4. Try multiple player clients without cookies (tv_embedded, web_creator, mweb, android).
 
-    Args:
-        url: YouTube URL
-    Returns:
-        Path to downloaded WAV file
-    Raises:
-        RuntimeError: If all strategies fail.
+    On Render/cloud servers: steps 2 and 4 are the only ones that work.
+    Set YOUTUBE_COOKIES_FILE in Render environment to a Netscape cookies.txt
+    exported from your browser while logged in to YouTube.
     """
     logger.info(f"[YouTubeDownload] Starting download: {url}")
 
@@ -266,32 +261,51 @@ def download_youtube_audio(url: str) -> str:
             "socket_timeout": 15,
             "outtmpl": output_path,
             "restrictfilenames": True,
-            "extractor_args": {"youtube": {"player_client": ["android"]}},
+            "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
         }
         with yt_dlp.YoutubeDL(probe_opts) as _ydl:
             _info = _ydl.extract_info(url, download=False)
             if _info:
                 existing = _find_wav(_ydl, _info)
                 if existing:
-                    logger.info(f"[YouTubeDownload] WAV already exists, skipping download: {existing}")
+                    logger.info(f"[YouTubeDownload] WAV already exists, skipping: {existing}")
                     return existing
     except Exception as _e:
         logger.debug(f"[YouTubeDownload] Pre-check skipped: {_e}")
 
     import tempfile
 
-    # --- STEP 1: browser cookies (primary path, needed for PO token) ---
+    # --- STEP 1: explicit YOUTUBE_COOKIES_FILE (works on Render) ---
+    cookie_file_env = os.getenv("YOUTUBE_COOKIES_FILE")
+    if cookie_file_env and Path(cookie_file_env).is_file():
+        logger.info(f"[YouTubeDownload] Trying with YOUTUBE_COOKIES_FILE...")
+        try:
+            opts = _base_ydl_opts(output_path)
+            opts["cookiefile"] = cookie_file_env
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    wav = _find_wav(ydl, info)
+                    if wav:
+                        logger.info(f"[YouTubeDownload] ✅ SUCCESS with cookie file: {wav}")
+                        return wav
+        except Exception as e:
+            err_str = str(e)
+            download_errors.append(f"cookie file: {err_str[:120]}")
+            logger.warning(f"[YouTubeDownload] Cookie file attempt failed: {err_str[:120]}")
+            if "private" in err_str.lower() or "members-only" in err_str.lower():
+                raise RuntimeError(
+                    "This video is private or members-only. Please use a public video "
+                    "or upload the file directly."
+                )
+
+    # --- STEP 2: browser cookies (local dev only — no browsers on cloud) ---
     browser_candidates = [
         ("chrome", "Chrome"),
         ("edge", "Edge"),
         ("firefox", "Firefox"),
         ("brave", "Brave"),
     ]
-
-    cookie_file_env = os.getenv("YOUTUBE_COOKIES_FILE")
-    if cookie_file_env and not Path(cookie_file_env).is_file():
-        logger.warning(f"[YouTubeDownload] YOUTUBE_COOKIES_FILE not found: {cookie_file_env}")
-        cookie_file_env = None
 
     for browser_name, display_name in browser_candidates:
         if not _find_browser_executable(browser_name):
@@ -305,7 +319,6 @@ def download_youtube_audio(url: str) -> str:
 
             exported = _export_cookies_to_file(browser_name, tmp_cookie)
             if not exported:
-                logger.debug(f"[YouTubeDownload] Could not export {display_name} cookies, skipping")
                 continue
 
             opts = _base_ydl_opts(output_path)
@@ -318,13 +331,14 @@ def download_youtube_audio(url: str) -> str:
                     if wav:
                         logger.info(f"[YouTubeDownload] ✅ SUCCESS with {display_name} cookies: {wav}")
                         return wav
-
         except Exception as e:
             err_str = str(e)
             download_errors.append(f"{display_name}: {err_str[:120]}")
-            logger.debug(f"[YouTubeDownload] {display_name} failed: {err_str[:120]}")
             if "private" in err_str.lower() or "members-only" in err_str.lower():
-                raise RuntimeError("This video is private or members-only. Please use a public video or upload the file directly.")
+                raise RuntimeError(
+                    "This video is private or members-only. Please use a public video "
+                    "or upload the file directly."
+                )
         finally:
             if tmp_cookie and Path(tmp_cookie).exists():
                 try:
@@ -332,23 +346,7 @@ def download_youtube_audio(url: str) -> str:
                 except Exception:
                     pass
 
-    # --- STEP 2: explicit cookie file ---
-    if cookie_file_env:
-        logger.info(f"[YouTubeDownload] Trying with YOUTUBE_COOKIES_FILE...")
-        try:
-            opts = _base_ydl_opts(output_path)
-            opts["cookiefile"] = cookie_file_env
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if info:
-                    wav = _find_wav(ydl, info)
-                    if wav:
-                        logger.info(f"[YouTubeDownload] ✅ SUCCESS with cookie file: {wav}")
-                        return wav
-        except Exception as e:
-            download_errors.append(f"cookie file: {str(e)[:120]}")
-
-    # --- STEP 3: no cookies last resort — try multiple clients ---
+    # --- STEP 3: multiple player clients without cookies ---
     for client in ["tv_embedded", "web_creator", "mweb", "android"]:
         logger.info(f"[YouTubeDownload] Trying client={client} without cookies...")
         try:
@@ -366,17 +364,22 @@ def download_youtube_audio(url: str) -> str:
             download_errors.append(f"client={client}: {err_str[:120]}")
             if "private" in err_str.lower() or "members-only" in err_str.lower():
                 raise RuntimeError(
-                    "This video is private or members-only. Please use a public video or upload the file directly."
+                    "This video is private or members-only. Please use a public video "
+                    "or upload the file directly."
                 )
 
-    error_summary = "\n".join(f"  • {e}" for e in download_errors[-5:])
+    # --- All strategies failed ---
+    error_summary = "\n".join(f"  • {e}" for e in download_errors[-6:])
     raise RuntimeError(
-        f"YouTube download failed.\n\n"
+        f"YouTube download failed after trying all available methods.\n\n"
         f"Errors:\n{error_summary}\n\n"
-        f"To fix: make sure Chrome, Edge, or Firefox is installed and you are logged in to YouTube, "
-        f"then restart the app and try again.\n"
-        f"Alternatively, set YOUTUBE_COOKIES_FILE in .env to a Netscape cookies.txt export, "
-        f"or upload the video file directly.\n\nURL: {url}"
+        f"YouTube is blocking downloads from this server's IP address.\n\n"
+        f"Solutions:\n"
+        f"  1. BEST: Most YouTube videos have captions — the app tries those first automatically.\n"
+        f"     If you see this error, this video has no captions. Try a different video.\n"
+        f"  2. Upload the video file directly instead of providing a URL.\n"
+        f"  3. Set YOUTUBE_COOKIES_FILE in Render environment (see docs/DEPLOYMENT.md).\n"
+        f"\nURL: {url}"
     )
 
 

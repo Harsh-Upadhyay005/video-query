@@ -343,11 +343,40 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
                 <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-xs sm:text-sm font-bold text-red-900 mb-0.5">Error</h3>
-                <p className="text-xs sm:text-sm text-red-700 break-words">{error}</p>
-                <p className="text-[11px] sm:text-xs text-red-600 mt-1.5">
-                  Make sure the backend is running and the {inputMode === 'url' ? 'URL is valid' : 'file format is supported'}.
+                <h3 className="text-xs sm:text-sm font-bold text-red-900 mb-1">
+                  {error.toLowerCase().includes('youtube download failed') || error.toLowerCase().includes('blocking downloads')
+                    ? 'YouTube Download Blocked'
+                    : 'Error'}
+                </h3>
+                <p className="text-xs sm:text-sm text-red-700 break-words whitespace-pre-line">
+                  {error.toLowerCase().includes('youtube download failed') || error.toLowerCase().includes('blocking downloads')
+                    ? "YouTube is blocking downloads from the server's IP address. This is a YouTube restriction, not a code bug."
+                    : error}
                 </p>
+
+                {(error.toLowerCase().includes('youtube download failed') || error.toLowerCase().includes('blocking downloads')) && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] sm:text-xs font-semibold text-red-800">What you can do:</p>
+                    <ol className="text-[11px] sm:text-xs text-red-700 space-y-1.5 list-decimal list-inside">
+                      <li>
+                        <strong>Switch to File Upload</strong> — download the video with a browser tool like{' '}
+                        <a href="https://cobalt.tools" target="_blank" rel="noopener noreferrer" className="underline">cobalt.tools</a>
+                        {' '}or{' '}
+                        <a href="https://yt-dlp.github.io/yt-dlp-web-ui" target="_blank" rel="noopener noreferrer" className="underline">yt-dlp web UI</a>
+                        , save the MP3/MP4, then use the "Upload File" tab above.
+                      </li>
+                      <li>
+                        <strong>Try a different video</strong> — videos with auto-generated captions work instantly without any download. Most English YouTube videos have them.
+                      </li>
+                    </ol>
+                  </div>
+                )}
+
+                {!error.toLowerCase().includes('youtube download failed') && !error.toLowerCase().includes('blocking downloads') && (
+                  <p className="text-[11px] sm:text-xs text-red-600 mt-1.5">
+                    Make sure the backend is running and the {inputMode === 'url' ? 'URL is valid and the video is public' : 'file format is supported'}.
+                  </p>
+                )}
               </div>
             </div>
           </div>
