@@ -387,28 +387,86 @@ def _store_rag_chain_internally(source_key: str, rag_chain):
 def get_rag_chain_for_source(source_key: str):
     """
     Retrieve stored RAG chain for a given source.
-    
-    Looks up the live in-process chain first, then reconstructs from the
-    persisted Chroma collection + BM25 documents.
+
+    Lookup order:
+    1. Live in-process chain (fastest)
+    2. Persisted Chroma collection + BM25 docs on disk
+    3. Rebuild from transcript stored in Supabase analyses table (survives restarts)
     """
     if not source_key:
         return None
-    
+
     storage = get_rag_storage()
+
+    # 1. Live chain
     rag_chain = storage.get_rag_chain(source_key)
-    
     if rag_chain:
         logger.info(f"[Pipeline]   Retrieved live RAG chain: {source_key}")
         return rag_chain
-    
+
+    # 2. Disk (Chroma + BM25 pickle)
     from core.rag_engine import load_rag_chain
     rag_chain = load_rag_chain(source_key)
-    
     if rag_chain:
         logger.info(f"[Pipeline]   Reconstructed RAG chain from disk: {source_key}")
         storage.store_rag_chain(source_key, rag_chain)
         return rag_chain
-    
+
+    # 3. Rebuild from Supabase transcript
+    try:
+        from core.supabase_database import get_database_manager
+        from core.rag_engine import build_rag_chain
+        from core.source_types import ProcessingMetadata, SourceType
+
+        db = get_database_manager()
+        row = db.get_analysis_by_job_id(source_key)
+
+        if row:
+            transcript = row.get("transcript")
+
+            # transcript may be stored as a list of segment dicts [{text,start,end}]
+            if isinstance(transcript, list):
+                flat = " ".join(
+                    seg.get("text", "") for seg in transcript if isinstance(seg, dict)
+                )
+            elif isinstance(transcript, str):
+                flat = transcript
+            else:
+                flat = ""
+
+            if flat.strip():
+                logger.info(
+                    f"[Pipeline]   Rebuilding RAG chain from Supabase transcript "
+                    f"for job {source_key} ({len(flat)} chars)"
+                )
+
+                source_type_str = row.get("source_type", "youtube")
+                try:
+                    st = SourceType(source_type_str)
+                except ValueError:
+                    st = SourceType.YOUTUBE
+
+                meta = ProcessingMetadata(
+                    source_type=st,
+                    source=row.get("source_ref") or source_key,
+                    job_id=source_key,
+                    language=row.get("language", "english"),
+                    char_count=len(flat),
+                    transcript_source=row.get("transcript_source"),
+                    video_id=row.get("video_id"),
+                )
+
+                rag_chain = build_rag_chain(
+                    text=flat,
+                    metadata=meta,
+                    video_id=source_key,
+                )
+                storage.store_rag_chain(source_key, rag_chain)
+                logger.info(f"[Pipeline]   RAG chain rebuilt from Supabase: {source_key}")
+                return rag_chain
+    except Exception as e:
+        logger.warning(f"[Pipeline] Supabase rebuild failed for {source_key}: {e}")
+
     logger.debug(f"[Pipeline] RAG chain not found: {source_key}")
     return None
 
