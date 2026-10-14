@@ -2,6 +2,13 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+// Keep Render free-tier backend warm — ping every 14 minutes to prevent cold starts
+if (typeof window !== 'undefined' && API_BASE_URL.includes('onrender.com')) {
+  const ping = () => fetch(`${API_BASE_URL}/health`, { method: 'GET' }).catch(() => {});
+  ping(); // immediate ping on page load
+  setInterval(ping, 14 * 60 * 1000); // then every 14 minutes
+}
+
 /**
  * Get auth token from Supabase session (if available).
  * Returns null if auth is not configured or user is not logged in.

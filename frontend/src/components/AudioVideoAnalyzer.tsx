@@ -42,6 +42,26 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
     setUploadProgress(0);
 
     try {
+      // Wake up Render if it's cold-starting (free tier spins down after 15 min)
+      // Silently retry /health up to 6 times (30 seconds) before giving up
+      let backendReady = false;
+      for (let i = 0; i < 6; i++) {
+        try {
+          await apiClient.checkHealth();
+          backendReady = true;
+          break;
+        } catch {
+          if (i === 0) setError('Backend is waking up from sleep — please wait up to 30 seconds…');
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
+      if (!backendReady) {
+        setError('Backend is not responding. Please try again in a moment.');
+        setLoading(false);
+        return;
+      }
+      setError(null);
+
       let data: AnalysisData;
       
       if (inputMode === 'url') {
