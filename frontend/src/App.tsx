@@ -13,6 +13,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SharedAnalysisPage } from './pages/SharedAnalysisPage';
 import type { AnalysisData } from './types/analysis';
+import { TextRoll } from '@/components/ui/text-roll';
 
 type ViewType = 'home' | 'studio' | 'share';
 type AnalyzerType = 'audio-video' | 'pdf';
@@ -173,7 +174,7 @@ function App() {
                       }`}
                     >
                       <span>🎬</span>
-                      <span>Audio / Video / YouTube</span>
+                      <TextRoll>Audio / Video / YouTube</TextRoll>
                     </button>
                     <button
                       onClick={() => {
@@ -187,7 +188,7 @@ function App() {
                       }`}
                     >
                       <span>📄</span>
-                      <span>PDF Documents</span>
+                      <TextRoll>PDF Documents</TextRoll>
                     </button>
                   </div>
 

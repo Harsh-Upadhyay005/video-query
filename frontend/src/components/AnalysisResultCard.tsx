@@ -22,6 +22,7 @@ import type { AnalysisData, TranscriptSegment } from '../types/analysis';
 import { ShareModal } from './ShareModal';
 import { processDocumentData } from '../utils/documentHelper';
 import { DocumentReader } from './DocumentReader';
+import { TextRoll } from '@/components/ui/text-roll';
 
 interface AnalysisResultCardProps {
   analysis: AnalysisData;
@@ -116,7 +117,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
             title="Create public share link"
           >
             <Share2 className="w-3.5 h-3.5" />
-            <span>Share</span>
+            <TextRoll>Share</TextRoll>
           </button>
 
           <button
@@ -126,12 +127,12 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ analysis
             {isPdf ? (
               <>
                 <FileText className="w-4 h-4 text-[#1A1A1A]" />
-                <span>New Document</span>
+                <TextRoll>New Document</TextRoll>
               </>
             ) : (
               <>
                 <Play className="w-4 h-4 text-[#1A1A1A] fill-current" />
-                <span>New Analysis</span>
+                <TextRoll>New Analysis</TextRoll>
               </>
             )}
           </button>
