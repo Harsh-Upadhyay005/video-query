@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Volume2
 } from "lucide-react";
+import { TextRoll } from "@/components/ui/text-roll";
 
 type EngineTab = "whisper" | "sarvam";
 
@@ -82,7 +83,7 @@ export const FeatureShowcase: React.FC = () => {
                   }`}
                 >
                   <Zap className="w-3.5 h-3.5 text-[#D9CCF5]" />
-                  <span>Faster-Whisper (Local)</span>
+                  <TextRoll>Faster-Whisper (Local)</TextRoll>
                 </button>
                 <button
                   onClick={() => setSelectedEngine("sarvam")}
@@ -93,7 +94,7 @@ export const FeatureShowcase: React.FC = () => {
                   }`}
                 >
                   <Volume2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Sarvam AI (Hinglish)</span>
+                  <TextRoll>Sarvam AI (Hinglish)</TextRoll>
                 </button>
               </div>
 

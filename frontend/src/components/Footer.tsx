@@ -1,6 +1,7 @@
 import type React from "react";
 import { Video, ExternalLink, Sparkles } from "lucide-react";
 import { FluidGradientText } from "@/components/fluid-gradient-text";
+import { TextRoll } from "@/components/ui/text-roll";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -52,7 +53,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
               </svg>
-              <span>Launch Video Studio</span>
+              <TextRoll>Launch Video Studio</TextRoll>
             </button>
 
             {/* Explore Presets */}
@@ -61,7 +62,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigateToStudio }) => {
               className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-full bg-[#FDFCF0] hover:bg-white text-[#1A1A1A] border border-black/15 px-6 sm:px-7 py-3.5 sm:py-4 text-xs sm:text-sm font-bold shadow-md transition-all hover:scale-105 active:scale-95"
             >
               <Sparkles className="w-4 h-4 text-purple-600" />
-              <span>Explore Demo Presets</span>
+              <TextRoll>Explore Demo Presets</TextRoll>
             </button>
           </div>
 
