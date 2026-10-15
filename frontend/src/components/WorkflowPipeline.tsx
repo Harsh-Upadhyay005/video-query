@@ -13,6 +13,7 @@ import {
   Play,
   Zap
 } from "lucide-react";
+import { TextRoll } from "@/components/ui/text-roll";
 
 interface WorkflowPipelineProps {
   onNavigateToStudio?: () => void;
@@ -207,7 +208,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                 onClick={onNavigateToStudio}
                 className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-[#FAF8F0] hover:bg-white text-[#073328] font-bold text-xs transition-all hover:scale-105 active:scale-95 shadow-md shrink-0"
               >
-                <span>Launch Studio</span>
+                <TextRoll>Launch Studio</TextRoll>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -230,7 +231,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                 }`}
               >
                 <Icon className={`w-4 h-4 ${isSelected ? "text-[#073328]" : "text-emerald-300"}`} />
-                <span>{tab.label}</span>
+                <TextRoll>{tab.label}</TextRoll>
                 <span
                   className={`text-[9px] uppercase px-1.5 py-0.5 rounded-full font-bold ${
                     isSelected
@@ -336,7 +337,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                     >
                       <button className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-400 hover:bg-emerald-300 text-[#073328] font-bold text-xs shadow-md transition-all">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Analyze with VideoQuery</span>
+                        <TextRoll>Analyze with VideoQuery</TextRoll>
                       </button>
                     </motion.div>
                   </div>
@@ -384,7 +385,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                       </p>
                       <button className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#05261E] hover:bg-emerald-400 hover:text-[#073328] text-emerald-200 text-[10px] font-mono font-semibold transition-all border border-emerald-500/30">
                         <Clock className="w-3 h-3" />
-                        <span>[14:22] Jump Video to Timestamp</span>
+                        <TextRoll>[14:22] Jump Video to Timestamp</TextRoll>
                       </button>
                     </div>
                   </div>
@@ -432,7 +433,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                   onClick={onNavigateToStudio}
                   className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-[#FAF8F0] hover:bg-white text-[#073328] font-bold text-xs transition-all hover:scale-105 active:scale-95 shadow-md shrink-0 self-start lg:self-auto"
                 >
-                  <span>Open in Studio</span>
+                  <TextRoll>Open in Studio</TextRoll>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -507,7 +508,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                   onClick={onNavigateToStudio}
                   className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-[#FAF8F0] hover:bg-white text-[#073328] font-bold text-xs transition-all hover:scale-105 active:scale-95 shadow-md shrink-0 self-start lg:self-auto"
                 >
-                  <span>Analyze Audio</span>
+                  <TextRoll>Analyze Audio</TextRoll>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -573,7 +574,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({ onNavigateTo
                   onClick={onNavigateToStudio}
                   className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-[#FAF8F0] hover:bg-white text-[#073328] font-bold text-xs transition-all hover:scale-105 active:scale-95 shadow-md shrink-0 self-start lg:self-auto"
                 >
-                  <span>Upload Document</span>
+                  <TextRoll>Upload Document</TextRoll>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
