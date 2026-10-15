@@ -3,6 +3,8 @@ import type React from 'react';
 import { Youtube, Upload, Sparkles, FileAudio, X, Loader2, AlertCircle } from 'lucide-react';
 import apiClient from '../api/client';
 import type { AnalysisData } from '../types/analysis';
+import AnalysisProgressBar from './AnalysisProgressBar';
+import { TextRoll } from '@/components/ui/text-roll';
 
 interface AudioVideoAnalyzerProps {
   onAnalysisComplete: (result: AnalysisData) => void;
@@ -21,6 +23,10 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [progressStage, setProgressStage] = useState<string>('');
+  const [progressMessage, setProgressMessage] = useState<string>('');
+  const [analyzingMediaType, setAnalyzingMediaType] = useState<'video' | 'audio' | 'url'>('url');
+  const [activeFileName, setActiveFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,6 +47,13 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
     setError(null);
     setUploadProgress(0);
 
+    const isUrl = inputMode === 'url';
+    const isAudio = selectedFile?.type?.includes('audio') || Boolean(selectedFile?.name?.match(/\.(mp3|wav|m4a|flac|ogg|aac)$/i));
+    setAnalyzingMediaType(isUrl ? 'url' : isAudio ? 'audio' : 'video');
+    setActiveFileName(selectedFile?.name || (isUrl ? url : ''));
+    setProgressStage('initializing');
+    setProgressMessage(isUrl ? 'Connecting to video stream...' : 'Preparing media file for analysis...');
+
     try {
       // Wake up Render if it's cold-starting (free tier spins down after 15 min)
       // Silently retry /health up to 6 times (30 seconds) before giving up
@@ -51,7 +64,10 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
           backendReady = true;
           break;
         } catch {
-          if (i === 0) setError('Backend is waking up from sleep — please wait up to 30 seconds…');
+          if (i === 0) {
+            setError('Backend is waking up from sleep — please wait up to 30 seconds…');
+            setProgressMessage('Waking up cloud server from standby...');
+          }
           await new Promise(r => setTimeout(r, 5000));
         }
       }
@@ -62,14 +78,18 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
       }
       setError(null);
 
+      const handleProgress = (progress: number, details?: { stage?: string; message?: string }) => {
+        setUploadProgress(progress);
+        if (details?.stage) setProgressStage(details.stage);
+        if (details?.message) setProgressMessage(details.message);
+      };
+
       let data: AnalysisData;
       
       if (inputMode === 'url') {
-        data = await apiClient.analyzeVideoAsync(url, language);
+        data = await apiClient.analyzeVideoAsync(url, language, handleProgress);
       } else {
-        data = await apiClient.uploadAndAnalyze(selectedFile!, language, (progress) => {
-          setUploadProgress(progress);
-        });
+        data = await apiClient.uploadAndAnalyze(selectedFile!, language, handleProgress);
       }
 
       const analysis: AnalysisData = {
@@ -171,7 +191,7 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
             }`}
           >
             <Youtube className="w-4 h-4 text-red-500" />
-            <span>YouTube URL</span>
+            <TextRoll>YouTube URL</TextRoll>
           </button>
           <button
             type="button"
@@ -188,7 +208,7 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
             }`}
           >
             <Upload className="w-4 h-4 text-purple-500" />
-            <span>Upload File</span>
+            <TextRoll>Upload File</TextRoll>
           </button>
         </div>
 
@@ -327,31 +347,22 @@ function AudioVideoAnalyzer({ onAnalysisComplete }: AudioVideoAnalyzerProps) {
             ) : (
               <>
                 <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span>{inputMode === 'url' ? 'Analyze Video' : 'Analyze Media'}</span>
+                <TextRoll>{inputMode === 'url' ? 'Analyze Video' : 'Analyze Media'}</TextRoll>
               </>
             )}
           </button>
         </form>
 
-        {/* Loading State */}
+        {/* Progress Bar with Project Theme */}
         {loading && (
-          <div className="bg-[#D9CCF5]/20 rounded-2xl border border-[#D9CCF5]/40 p-4 sm:p-6 text-center space-y-3">
-            <div className="flex justify-center">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#1A1A1A] flex items-center justify-center">
-                <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#D9CCF5] animate-spin" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs sm:text-sm font-semibold text-[#1A1A1A]">
-                {uploadProgress > 0 && uploadProgress < 100
-                  ? `Uploading file... ${uploadProgress}%`
-                  : `Processing ${inputMode === 'url' ? 'video' : 'media'}...`}
-              </p>
-              <p className="text-[11px] sm:text-xs text-[#8A8A8A] mt-1 max-w-md mx-auto">
-                This may take 2-10 minutes. We're {inputMode === 'url' && 'downloading, '}
-                transcribing audio, and creating a searchable index.
-              </p>
-            </div>
+          <div className="mt-4 animate-fade-in">
+            <AnalysisProgressBar
+              progress={uploadProgress}
+              stage={progressStage}
+              statusMessage={progressMessage}
+              mediaType={analyzingMediaType}
+              fileName={activeFileName}
+            />
           </div>
         )}
 
