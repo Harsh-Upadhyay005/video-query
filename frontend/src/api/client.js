@@ -144,14 +144,14 @@ class APIClient {
     });
   }
 
-  async analyzeVideoAsync(source, language = 'english') {
+  async analyzeVideoAsync(source, language = 'english', onProgress = null) {
     const data = await this.request('/api/v1/analyze', {
       method: 'POST',
       body: JSON.stringify({ source, language }),
     });
 
     if (data?.job_id && (data.status === 'processing' || data.status === 'pending' || !data.title)) {
-      return this.pollJobProgress(data.job_id);
+      return this.pollJobProgress(data.job_id, onProgress);
     }
 
     return this.normalizeAnalysisResult(data, data?.job_id);
@@ -252,7 +252,7 @@ class APIClient {
             const data = JSON.parse(event.data);
 
             if (onProgress && data.progress != null) {
-              onProgress(data.progress);
+              onProgress(data.progress, data);
             }
 
             if (data.status === 'completed' && data.result) {
