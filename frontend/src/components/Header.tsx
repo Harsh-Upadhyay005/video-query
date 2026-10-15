@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type React from 'react';
 import { Show, SignInButton, SignUpButton, UserButton } from '@clerk/react';
 import { isClerkConfigured } from '../lib/clerk';
+import { TextRoll } from '@/components/ui/text-roll';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -18,12 +19,12 @@ const ClerkUserSection: React.FC = () => {
         <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 border-l border-black/10">
           <SignInButton mode="modal">
             <button className="px-2.5 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-xs font-bold text-[#1A1A1A] transition-colors hover:text-[#6D5A9E] whitespace-nowrap">
-              Sign In
+              <TextRoll>Sign In</TextRoll>
             </button>
           </SignInButton>
           <SignUpButton mode="modal">
             <button className="rounded-full border border-black/10 bg-[#E5D7FA] px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-bold text-[#1A1A1A] shadow-xs transition-all hover:bg-[#D9CCF5] hover:scale-105 active:scale-95 whitespace-nowrap">
-              Sign Up
+              <TextRoll>Sign Up</TextRoll>
             </button>
           </SignUpButton>
         </div>
@@ -129,7 +130,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-[#8A8A8A] hover:text-[#1A1A1A]'
               }`}
             >
-              Overview
+              <TextRoll>Overview</TextRoll>
             </button>
             <button
               onClick={onNavigateToStudio}
@@ -139,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-[#8A8A8A] hover:text-[#1A1A1A]'
               }`}
             >
-              <span className="hidden xs:inline">Video</span> Studio
+              <TextRoll>Video Studio</TextRoll>
               <span className="text-[8px] sm:text-[9px] uppercase font-bold px-1 sm:px-1.5 py-0.5 rounded-full bg-[#D9CCF5] text-[#1a1a1a]">
                 AI
               </span>
@@ -165,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({
               <svg className="w-3.5 h-3.5 text-[#1A1A1A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
               </svg>
-              <span>Launch Studio</span>
+              <TextRoll>Launch Studio</TextRoll>
             </button>
 
             {isClerkConfigured && <ClerkUserSection />}
