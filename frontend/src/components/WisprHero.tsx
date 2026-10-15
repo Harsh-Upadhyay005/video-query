@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { motion } from "motion/react";
+import { TextRoll } from "@/components/ui/text-roll";
 
 const WAVE_BAR_COUNT = 32;
 
@@ -66,7 +67,7 @@ function Content({ onNavigateToStudio }: ContentProps) {
           <svg className="w-4 h-4 text-[#1A1A1A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="5 3 19 12 5 21 5 3"></polygon>
           </svg>
-          <span>Launch Video Studio</span>
+          <TextRoll>Launch Video Studio</TextRoll>
         </button>
         <p className="text-[11px] sm:text-xs text-[#8A8A8A] font-medium tracking-wide text-center">
           YouTube URLs • MP3/MP4/WAV Uploads • Drag & Drop • 12 Formats • Hinglish Support

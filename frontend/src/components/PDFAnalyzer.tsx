@@ -3,6 +3,8 @@ import type React from 'react';
 import { FileText, Upload, Sparkles, X, Loader2, AlertCircle } from 'lucide-react';
 import apiClient from '../api/client';
 import type { AnalysisData } from '../types/analysis';
+import AnalysisProgressBar from './AnalysisProgressBar';
+import { TextRoll } from '@/components/ui/text-roll';
 
 interface PDFAnalyzerProps {
   onAnalysisComplete: (result: AnalysisData) => void;
@@ -18,6 +20,9 @@ function PDFAnalyzer({ onAnalysisComplete }: PDFAnalyzerProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [progressStage, setProgressStage] = useState<string>('');
+  const [progressMessage, setProgressMessage] = useState<string>('');
+  const [activeFileName, setActiveFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,10 +39,19 @@ function PDFAnalyzer({ onAnalysisComplete }: PDFAnalyzerProps) {
     setError(null);
     setUploadProgress(0);
 
+    const fileName = selectedFile.name;
+    setActiveFileName(fileName);
+    setProgressStage('pdf_extraction');
+    setProgressMessage(`Reading pages from ${fileName}...`);
+
     try {
-      const data = await apiClient.uploadAndAnalyze(selectedFile, language, (progress) => {
+      const handleProgress = (progress: number, details?: { stage?: string; message?: string }) => {
         setUploadProgress(progress);
-      });
+        if (details?.stage) setProgressStage(details.stage);
+        if (details?.message) setProgressMessage(details.message);
+      };
+
+      const data = await apiClient.uploadAndAnalyze(selectedFile, language, handleProgress);
       
       const analysis: AnalysisData = {
         ...data,
@@ -231,29 +245,21 @@ function PDFAnalyzer({ onAnalysisComplete }: PDFAnalyzerProps) {
           ) : (
             <>
               <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span>Analyze PDF</span>
+              <TextRoll>Analyze PDF</TextRoll>
             </>
           )}
         </button>
 
-        {/* Loading State */}
+        {/* Progress Bar with Project Theme */}
         {loading && (
-          <div className="bg-[#D9CCF5]/20 rounded-2xl border border-[#D9CCF5]/40 p-4 sm:p-6 text-center space-y-3">
-            <div className="flex justify-center">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#1A1A1A] flex items-center justify-center">
-                <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 text-[#D9CCF5] animate-spin" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs sm:text-sm font-semibold text-[#1A1A1A]">
-                {uploadProgress > 0 && uploadProgress < 100
-                  ? `Uploading PDF... ${uploadProgress}%`
-                  : 'Processing document...'}
-              </p>
-              <p className="text-[11px] sm:text-xs text-[#8A8A8A] mt-1 max-w-md mx-auto">
-                This may take a few minutes. Extracting text, creating embeddings, and indexing content.
-              </p>
-            </div>
+          <div className="mt-4 animate-fade-in">
+            <AnalysisProgressBar
+              progress={uploadProgress}
+              stage={progressStage}
+              statusMessage={progressMessage}
+              mediaType="pdf"
+              fileName={activeFileName}
+            />
           </div>
         )}
 
