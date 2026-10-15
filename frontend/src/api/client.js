@@ -286,7 +286,16 @@ class APIClient {
                       connect(); // still running — reconnect SSE
                     }
                   })
-                  .catch(() => connect()); // status endpoint unreachable, just reconnect
+                  .catch((err) => {
+                    // 404 = job gone (server restart) — stop polling, don't reconnect
+                    if (err?.status === 404) {
+                      finish(reject, new Error(
+                        'The server restarted during analysis. Please submit the request again.'
+                      ));
+                    } else {
+                      connect(); // transient error — reconnect SSE
+                    }
+                  });
               }
             }, delay);
           } else {

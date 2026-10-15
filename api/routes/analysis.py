@@ -347,26 +347,68 @@ async def stream_progress(job_id: str):
 
 @router.get("/status/{job_id}")
 async def get_analysis_status(job_id: str):
-    """
-    Get the status of an analysis job.
-    
-    - **job_id**: The job ID returned from /analyze endpoint
-    
-    Returns the current status and result (if completed).
-    """
-    if job_id not in progress_store:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-    
-    progress_data = progress_store[job_id]
-    return {
-        "job_id": job_id,
-        "status": progress_data.get("status", "unknown"),
-        "stage": progress_data.get("stage", "unknown"),
-        "progress": progress_data.get("progress", 0),
-        "message": progress_data.get("message", ""),
-        "result": progress_data.get("result") if progress_data.get("status") == "completed" else None,
-        "error": progress_data.get("error") if progress_data.get("status") == "failed" else None
-    }
+    """Get the status of an analysis job."""
+
+    # 1. Check in-process progress store (fastest)
+    if job_id in progress_store:
+        progress_data = progress_store[job_id]
+        return {
+            "job_id": job_id,
+            "status": progress_data.get("status", "unknown"),
+            "stage": progress_data.get("stage", "unknown"),
+            "progress": progress_data.get("progress", 0),
+            "message": progress_data.get("message", ""),
+            "result": progress_data.get("result") if progress_data.get("status") == "completed" else None,
+            "error": progress_data.get("error") if progress_data.get("status") == "failed" else None,
+        }
+
+    # 2. Server restarted — check Supabase for a completed analysis
+    try:
+        from core.supabase_client import is_supabase_configured
+        from core.supabase_database import get_database_manager
+
+        if is_supabase_configured():
+            db = get_database_manager()
+            row = db.get_analysis_by_job_id(job_id)
+            if row and row.get("status") == "completed":
+                # Rebuild a minimal result dict from the persisted row
+                transcript = row.get("transcript") or ""
+                if isinstance(transcript, list):
+                    transcript = " ".join(
+                        seg.get("text", "") for seg in transcript if isinstance(seg, dict)
+                    )
+                result = {
+                    "title": row.get("title", ""),
+                    "transcript": transcript,
+                    "summary": row.get("summary", ""),
+                    "action_items": row.get("action_items", ""),
+                    "key_decisions": row.get("key_decisions", ""),
+                    "open_questions": row.get("open_questions", ""),
+                    "job_id": job_id,
+                    "type": row.get("source_type", "video"),
+                    "source_type": row.get("source_type", "video"),
+                    "segments": row.get("transcript") if isinstance(row.get("transcript"), list) else [],
+                    "transcript_source": row.get("transcript_source"),
+                    "video_id": row.get("video_id"),
+                    "duration_seconds": row.get("duration_seconds"),
+                }
+                logger.info(f"[Status] Recovered completed job from Supabase: {job_id}")
+                return {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "stage": "done",
+                    "progress": 100,
+                    "message": "Analysis complete (recovered from database)",
+                    "result": result,
+                    "error": None,
+                }
+    except Exception as e:
+        logger.warning(f"[Status] Supabase fallback failed for {job_id}: {e}")
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"Job {job_id} not found. The server may have restarted — please re-analyze."
+    )
 
 
 @router.post("/analyze/sync", response_model=AnalysisResult)
