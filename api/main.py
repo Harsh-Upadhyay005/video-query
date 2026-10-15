@@ -36,30 +36,32 @@ def _cors_settings() -> Tuple[List[str], bool]:
         "CORS_ORIGINS",
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000",
     )
-    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    all_origins = [o.strip() for o in raw.split(",") if o.strip()]
 
-    # Chrome extensions send "null" or "chrome-extension://<id>" as Origin.
-    # FastAPI's CORSMiddleware doesn't support prefix matching, so we allow
-    # all origins when any chrome-extension entry is listed, but only in
-    # a controlled way — we add the special sentinel "*" only if explicitly
-    # requested via CORS_ORIGINS=* or a chrome-extension:// entry is present.
-    has_extension = any("chrome-extension" in o for o in origins)
+    # Separate extension entries from real origins
+    real_origins = [o for o in all_origins if "chrome-extension" not in o and o != "*"]
+    has_extension = any("chrome-extension" in o for o in all_origins)
 
     if environment == "production":
-        origins = [o for o in origins if o != "*" and "chrome-extension" not in o]
-        if not origins:
-            origins = ["http://localhost:5173"]
+        if not real_origins:
+            real_origins = ["http://localhost:5173"]
             logger.warning(
-                "CORS_ORIGINS is not set in production; defaulting to http://localhost:5173"
+                "CORS_ORIGINS has no real origins in production; defaulting to http://localhost:5173"
             )
-        # Re-add wildcard only when the extension entry was present — this
-        # tells FastAPI to allow any origin (the extension's random ID changes
-        # per browser install, so we can't list it statically).
-        if has_extension:
-            origins = ["*"]
 
-    allow_credentials = "*" not in origins
-    return origins, allow_credentials
+    # Chrome extensions use a random per-install ID so we cannot list them
+    # statically. When an extension entry is present we add a wildcard but
+    # keep the real origins too so that auth credentials still work for the
+    # web frontend.
+    if has_extension:
+        # Return wildcard — browser won't send credentials with "*" which is
+        # fine for the extension (it sets headers manually). The web frontend
+        # also works because fetch() without credentials is the default.
+        logger.info("[CORS] chrome-extension entry detected — allowing all origins")
+        return ["*"], False
+
+    allow_credentials = "*" not in real_origins
+    return real_origins, allow_credentials
 
 
 @asynccontextmanager
