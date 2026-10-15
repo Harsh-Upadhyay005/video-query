@@ -78,6 +78,21 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info("AI Video Agent API Starting...")
     logger.info("=" * 80)
+
+    # Decode YOUTUBE_COOKIES_B64 → cookies file so yt-dlp can authenticate
+    try:
+        import base64
+        cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
+        if cookies_b64:
+            cookies_path = "/tmp/youtube_cookies.txt"
+            with open(cookies_path, "wb") as f:
+                f.write(base64.b64decode(cookies_b64))
+            os.environ["YOUTUBE_COOKIES_FILE"] = cookies_path
+            logger.info(f"[Startup] YouTube cookies written to {cookies_path}")
+        else:
+            logger.info("[Startup] YOUTUBE_COOKIES_B64 not set — YouTube downloads rely on captions or client fallback")
+    except Exception as e:
+        logger.warning(f"[Startup] Failed to decode YouTube cookies (non-fatal): {e}")
     
     try:
         # Validate environment (non-strict so missing optional vars don't crash the app)
