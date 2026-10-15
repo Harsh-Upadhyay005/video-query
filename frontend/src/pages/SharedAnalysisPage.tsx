@@ -23,6 +23,7 @@ import apiClient from '../api/client';
 import type { TranscriptSegment } from '../types/analysis';
 import { processDocumentData } from '../utils/documentHelper';
 import { DocumentReader } from '../components/DocumentReader';
+import { TextRoll } from '@/components/ui/text-roll';
 
 interface SharedAnalysisPageProps {
   slug: string;
@@ -120,14 +121,14 @@ export const SharedAnalysisPage: React.FC<SharedAnalysisPageProps> = ({
             onClick={onNavigateToHome}
             className="px-4 py-2 rounded-xl border border-[#1A1A1A]/20 bg-white hover:bg-[#FDFCF0] text-xs font-semibold text-[#1A1A1A] transition-colors"
           >
-            Go to Homepage
+            <TextRoll>Go to Homepage</TextRoll>
           </button>
           <button
             onClick={onNavigateToStudio}
             className="px-4 py-2 rounded-xl bg-[#1A1A1A] text-white hover:bg-black text-xs font-semibold transition-colors flex items-center gap-1.5"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>Analyze Your Own Content</span>
+            <TextRoll>Analyze Your Own Content</TextRoll>
           </button>
         </div>
       </div>
@@ -628,7 +629,7 @@ export const SharedAnalysisPage: React.FC<SharedAnalysisPageProps> = ({
             className="px-5 py-3 rounded-xl bg-[#1A1A1A] text-white hover:bg-black font-semibold text-xs sm:text-sm transition-all shadow-md shrink-0 flex items-center gap-2"
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Try Video Query Free</span>
+            <TextRoll>Try Video Query Free</TextRoll>
           </button>
         </div>
       </main>
