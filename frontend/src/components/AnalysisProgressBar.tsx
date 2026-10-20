@@ -10,7 +10,6 @@ import {
   Youtube,
   Database,
   Cpu,
-  Bot,
   Zap,
 } from "lucide-react";
 
@@ -344,8 +343,6 @@ export const AnalysisProgressBar: React.FC<AnalysisProgressBarProps> = ({
         {steps.map((step, idx) => {
           const isDone = currentStepIndex > idx || displayProgress >= 100;
           const isCurrent = currentStepIndex === idx && displayProgress < 100;
-          const isPending = currentStepIndex < idx;
-          const Icon = step.icon;
 
           return (
             <div
