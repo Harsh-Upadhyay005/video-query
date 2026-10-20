@@ -90,14 +90,18 @@ async def chat_with_transcript(
         if session_id:
             logger.info(f"[Chat] Looking for session: {session_id}")
             rag_chain = get_rag_chain_for_source(session_id)
-            
+
             if rag_chain:
                 logger.info(f"[Chat]   Found RAG chain for session: {session_id}")
             else:
                 logger.warning(f"[Chat] No RAG chain found for session: {session_id}")
                 raise HTTPException(
-                    status_code=404,
-                    detail="No transcript found for this session. The server may have restarted — please analyze the video or document again."
+                    status_code=503,
+                    detail=(
+                        "The transcript index for this session is not available. "
+                        "This usually means the server restarted and the index needs to be rebuilt. "
+                        "Please re-analyze the video or document — it will be ready in seconds."
+                    )
                 )
         else:
             # No session_id — try most recent in all environments

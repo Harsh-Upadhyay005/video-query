@@ -124,27 +124,28 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({ currentAnalysi
     try {
       const sessionId = currentAnalysis?.job_id || null;
       let data = await apiClient.sendChatMessage(question, sessionId).catch(async (err: any) => {
-        // Auto-reindex if server restarted and lost the vector store
-        const isGone =
+        const detail = (err?.data?.detail || err?.message || "").toLowerCase();
+        const isIndexGone =
           err?.status === 404 ||
-          (err?.data?.detail || err?.message || "").toLowerCase().includes("no transcript");
+          err?.status === 503 ||
+          detail.includes("no transcript") ||
+          detail.includes("not available") ||
+          detail.includes("restarted");
 
-        if (isGone && currentAnalysis) {
+        if (isIndexGone && currentAnalysis) {
           const reindexMsg: Message = {
             id: Date.now().toString() + "-reindex",
             sender: "assistant",
-            text: "⚡ Server restarted and lost the index. Re-indexing your content now — this takes about 10–30 seconds...",
+            text: "⚡ Index not found — rebuilding from your content now (10–30 seconds)…",
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
           setMessages(prev => [...prev, reindexMsg]);
 
-          // Re-analyze the source to rebuild the vector store
           const source = currentAnalysis.metadata?.source || "";
           if (source) {
             await apiClient.analyzeVideoAsync(source);
           }
 
-          // Retry the question with the fresh session
           return await apiClient.sendChatMessage(question, sessionId);
         }
         throw err;
