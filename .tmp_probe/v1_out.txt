@@ -1,0 +1,3 @@
+2026-10-21 16:19:58 - core.groq_llm_client - INFO - [groq_llm_client.py:86] - [GroqClient] Initialized: model=llama-3.3-70b-versatile, temp=0.3, max_retries=5
+2026-10-21 16:19:58 - core.llm_service - INFO - [llm_service.py:274] - [GroqLLM] Initialized for RAG queries only
+<class 'core.llm_service.GroqLLMService'>

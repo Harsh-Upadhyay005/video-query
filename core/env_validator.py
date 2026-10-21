@@ -50,6 +50,12 @@ class EnvValidator:
             "validation": lambda v: v in ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"],
             "error": "Must be one of: tiny, base, small, medium, large, large-v2, large-v3",
             "default": "large-v3"
+        },
+        "GROQ_LLM_MODEL": {
+            "description": "Groq chat model name (used when LLM_PROVIDER=groq)",
+            "validation": lambda v: len(v) > 0,
+            "error": "Must be a non-empty model name",
+            "default": "llama-3.3-70b-versatile"
         }
     }
     
@@ -164,8 +170,15 @@ class EnvValidator:
             Tuple of (is_valid, list_of_errors)
         """
         errors = []
-        
+
+        # MISTRAL_API_KEY is only required when the LLM provider is Mistral
+        # (or unset). When LLM_PROVIDER=groq, Mistral is an optional fallback.
+        llm_provider = os.getenv("LLM_PROVIDER", "mistral").lower()
+
         for var_name, config in EnvValidator.REQUIRED_VARS.items():
+            if var_name == "MISTRAL_API_KEY" and llm_provider == "groq":
+                continue
+
             value = os.getenv(var_name)
             
             if not value:
@@ -347,6 +360,8 @@ class EnvValidator:
         
         safe_vars = {
             "ENVIRONMENT": os.getenv("ENVIRONMENT", "development"),
+            "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "mistral"),
+            "GROQ_LLM_MODEL": os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile"),
             "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
             "WHISPER_MODEL": os.getenv("WHISPER_MODEL", "small"),
             "WHISPER_DEVICE": os.getenv("WHISPER_DEVICE", "cpu"),
