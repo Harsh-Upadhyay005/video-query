@@ -1,0 +1,13 @@
+
+> ai-video-agent-frontend@1.0.0 build
+> node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build ; echo BUILD_EXIT=0
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+[32m✓[39m 0 modules transformed.
+[31mx[39m Build failed in 13ms
+[31merror during build:
+[31mCould not resolve entry module ";/index.html".[31m
+    at getRollupError (file:///d:/AI%20Video%20Agent/frontend/node_modules/vite/node_modules/rollup/dist/es/shared/parseAst.js:317:41)
+    at error (file:///d:/AI%20Video%20Agent/frontend/node_modules/vite/node_modules/rollup/dist/es/shared/parseAst.js:313:42)
+    at ModuleLoader.loadEntryModule (file:///d:/AI%20Video%20Agent/frontend/node_modules/vite/node_modules/rollup/dist/es/shared/node-entry.js:21949:20)
+    at async Promise.all (index 0)[39m

@@ -1,0 +1,6 @@
+langchain_groq 0.1.9
+langchain_core 0.2.43
+langchain_groq_reqs ['groq (>=0.4.1,<1)', 'langchain-core (>=0.2.26,<0.3.0)']
+init_params ['args', 'kwargs', 'self']
+ChatGroq model_name llama-3.3-70b-versatile
+DONE
