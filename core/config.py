@@ -129,6 +129,7 @@ class AppConfig:
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     sarvam: Optional[SarvamConfig] = None
     mistral: Optional[MistralConfig] = None
+    groq_llm_model: str = "llama-3.3-70b-versatile"
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
@@ -223,21 +224,43 @@ class ConfigManager:
             else:
                 logger.warning("SARVAM_API_KEY not set - Hinglish transcription will not be available")
             
-            # Mistral config (required)
+            # Mistral config (required when LLM_PROVIDER is mistral or unset;
+            # optional fallback when LLM_PROVIDER is groq)
+            llm_provider = os.getenv("LLM_PROVIDER", "mistral").lower()
             mistral_api_key = os.getenv("MISTRAL_API_KEY")
-            if not mistral_api_key:
-                raise ConfigurationError(
-                    "MISTRAL_API_KEY is required. Please set it in your .env file or environment."
+            mistral = None
+            if llm_provider != "groq":
+                if not mistral_api_key:
+                    raise ConfigurationError(
+                        "MISTRAL_API_KEY is required. Please set it in your .env file or environment."
+                    )
+                mistral = MistralConfig(
+                    api_key=mistral_api_key,
+                    model=os.getenv("MISTRAL_MODEL", "mistral-small-latest"),
+                    temperature=float(os.getenv("MISTRAL_TEMPERATURE", "0.3")),
+                    max_tokens=int(os.getenv("MISTRAL_MAX_TOKENS", "4096")),
+                    timeout=int(os.getenv("MISTRAL_TIMEOUT", "60")),
+                    max_retries=int(os.getenv("MISTRAL_MAX_RETRIES", "3"))
                 )
-            
-            mistral = MistralConfig(
-                api_key=mistral_api_key,
-                model=os.getenv("MISTRAL_MODEL", "mistral-small-latest"),
-                temperature=float(os.getenv("MISTRAL_TEMPERATURE", "0.3")),
-                max_tokens=int(os.getenv("MISTRAL_MAX_TOKENS", "4096")),
-                timeout=int(os.getenv("MISTRAL_TIMEOUT", "60")),
-                max_retries=int(os.getenv("MISTRAL_MAX_RETRIES", "3"))
-            )
+            else:
+                # Groq is the primary LLM; keep Mistral as a fallback only if configured
+                if mistral_api_key:
+                    mistral = MistralConfig(
+                        api_key=mistral_api_key,
+                        model=os.getenv("MISTRAL_MODEL", "mistral-small-latest"),
+                        temperature=float(os.getenv("MISTRAL_TEMPERATURE", "0.3")),
+                        max_tokens=int(os.getenv("MISTRAL_MAX_TOKENS", "4096")),
+                        timeout=int(os.getenv("MISTRAL_TIMEOUT", "60")),
+                        max_retries=int(os.getenv("MISTRAL_MAX_RETRIES", "3"))
+                    )
+                else:
+                    logger.info(
+                        "LLM_PROVIDER=groq: MISTRAL_API_KEY not set; "
+                        "Mistral fallback disabled"
+                    )
+
+            # Groq LLM model name (used by core.groq_llm_client via env, mirrored here)
+            groq_llm_model = os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
             
             # Vector store config
             vector_store = VectorStoreConfig(
@@ -266,6 +289,7 @@ class ConfigManager:
                 whisper=whisper,
                 sarvam=sarvam,
                 mistral=mistral,
+                groq_llm_model=groq_llm_model,
                 vector_store=vector_store,
                 logging=logging_config
             )

@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 
 from core.logger import get_logger
 from core.mistral_client import get_mistral_client, MistralRateLimitError
+from core.groq_llm_client import get_groq_client, GroqRateLimitError
 
 logger = get_logger(__name__)
 
@@ -255,6 +256,184 @@ Do not add information not present in the content."""),
             
         except Exception as e:
             logger.error(f"[MistralLLM] Summarization error: {e}")
+            return "Summary unavailable."
+
+
+class GroqLLMService(LLMService):
+    """
+    Groq-based LLM service for RAG queries.
+
+    Uses Groq's LLM/chat capabilities (text -> reasoning) via langchain-groq
+    ChatGroq. Mirrors MistralLLMService method-for-method so callers can be
+    swapped via the LLM_PROVIDER env var.
+    """
+
+    def __init__(self):
+        """Initialize Groq LLM service."""
+        self.groq_client = get_groq_client(temperature=0.3)
+        logger.info("[GroqLLM] Initialized for RAG queries only")
+
+    def answer_question(
+        self,
+        question: str,
+        context: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """
+        Answer question using retrieved context.
+
+        Args:
+            question: User's question
+            context: Retrieved context from vector store (NOT entire document)
+            conversation_history: Optional [{question: ..., answer: ...}]
+
+        Returns:
+            Answer text
+        """
+        logger.info(f"[GroqLLM] Answering question with {len(context)} chars of context")
+
+        try:
+            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.output_parsers import StrOutputParser
+
+            # Build prompt with context
+            system_prompt = """You are a helpful AI assistant answering questions based on provided context.
+
+Rules:
+1. Answer ONLY using information from the provided context
+2. If the context doesn't contain the answer, say "I cannot find this information in the provided content"
+3. Cite page numbers or sections when available in the context
+4. Be concise but complete
+5. Do not make up information not present in the context
+
+Context:
+{context}"""
+
+            # Add conversation history if available
+            if conversation_history and len(conversation_history) > 0:
+                history_text = "\n\nPrevious conversation:\n"
+                for exchange in conversation_history[-3:]:  # Last 3 exchanges
+                    history_text += f"Q: {exchange['question']}\nA: {exchange['answer']}\n"
+                system_prompt += history_text
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "{question}")
+            ])
+
+            llm = self.groq_client._get_llm()
+            chain = prompt | llm | StrOutputParser()
+
+            # Use retry logic from groq_llm_client
+            answer = self.groq_client.invoke_with_retry(
+                chain,
+                {"context": context, "question": question},
+                operation_name="RAG question answering"
+            )
+
+            logger.info(f"[GroqLLM] Generated answer: {len(answer)} chars")
+            return answer
+
+        except GroqRateLimitError as e:
+            logger.error(f"[GroqLLM] Rate limit exceeded: {e}")
+            return (
+                "I'm currently experiencing high demand. "
+                "Please wait a moment and try again, or rephrase your question."
+            )
+        except Exception as e:
+            logger.error(f"[GroqLLM] Error answering question: {e}", exc_info=True)
+            return "I encountered an error processing your question. Please try again."
+
+    def extract_structured_info(
+        self,
+        context: str,
+        extraction_type: str,
+        instructions: str
+    ) -> str:
+        """
+        Extract structured information from retrieved context.
+
+        This is for EXPLICIT user requests, not automatic ingestion.
+        Example: User clicks "Extract Key Decisions" button.
+
+        Args:
+            context: Retrieved context (NOT entire document)
+            extraction_type: Type (e.g., "key_decisions", "action_items")
+            instructions: Extraction instructions
+
+        Returns:
+            Extracted information
+        """
+        logger.info(f"[GroqLLM] Extracting {extraction_type} from {len(context)} chars")
+
+        try:
+            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.output_parsers import StrOutputParser
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", instructions),
+                ("human", "Content to analyze:\n\n{context}")
+            ])
+
+            llm = self.groq_client._get_llm()
+            chain = prompt | llm | StrOutputParser()
+
+            result = self.groq_client.invoke_with_retry(
+                chain,
+                {"context": context},
+                operation_name=f"{extraction_type} extraction"
+            )
+
+            logger.info(f"[GroqLLM] Extracted {len(result)} chars")
+            return result
+
+        except GroqRateLimitError as e:
+            logger.error(f"[GroqLLM] Rate limit during extraction: {e}")
+            return f"Extraction temporarily unavailable due to rate limiting. Please try again shortly."
+        except Exception as e:
+            logger.error(f"[GroqLLM] Extraction error: {e}", exc_info=True)
+            return f"Error during extraction: {str(e)}"
+
+    def summarize_context(self, context: str, max_length: int = 500) -> str:
+        """
+        Summarize retrieved context.
+
+        Args:
+            context: Retrieved context to summarize
+            max_length: Maximum summary length in words
+
+        Returns:
+            Summary text
+        """
+        logger.info(f"[GroqLLM] Summarizing {len(context)} chars (max {max_length} words)")
+
+        try:
+            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.output_parsers import StrOutputParser
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", f"""Create a concise summary of the provided content.
+
+Maximum length: {max_length} words
+Be clear, factual, and preserve key information.
+Do not add information not present in the content."""),
+                ("human", "{context}")
+            ])
+
+            llm = self.groq_client._get_llm()
+            chain = prompt | llm | StrOutputParser()
+
+            summary = self.groq_client.invoke_with_retry(
+                chain,
+                {"context": context},
+                operation_name="context summarization"
+            )
+
+            logger.info(f"[GroqLLM] Generated summary: {len(summary)} chars")
+            return summary
+
+        except Exception as e:
+            logger.error(f"[GroqLLM] Summarization error: {e}")
             return "Summary unavailable."
 
 
@@ -496,22 +675,30 @@ _rag_orchestrator_instance = None
 
 
 def get_llm_service() -> LLMService:
-    """Get singleton LLM service instance."""
+    """Get singleton LLM service instance.
+
+    Selects the provider from the LLM_PROVIDER env var:
+    'groq' -> GroqLLMService; anything else (including unset) -> MistralLLMService.
+    """
     global _llm_service_instance
-    
+
     if _llm_service_instance is None:
-        _llm_service_instance = MistralLLMService()
-    
+        provider = os.getenv("LLM_PROVIDER", "mistral").lower()
+        if provider == "groq":
+            _llm_service_instance = GroqLLMService()
+        else:
+            _llm_service_instance = MistralLLMService()
+
     return _llm_service_instance
 
 
 def get_rag_orchestrator() -> RAGLLMOrchestrator:
     """Get singleton RAG orchestrator instance."""
     global _rag_orchestrator_instance
-    
+
     if _rag_orchestrator_instance is None:
-        _rag_orchestrator_instance = RAGLLMOrchestrator()
-    
+        _rag_orchestrator_instance = RAGLLMOrchestrator(llm_service=get_llm_service())
+
     return _rag_orchestrator_instance
 
 
@@ -544,7 +731,11 @@ def structured_output(
 
     logger.info(f"[StructuredOutput] Generating {output_model.__name__}")
 
-    mistral_client = get_mistral_client(temperature=temperature)
+    provider = os.getenv("LLM_PROVIDER", "mistral").lower()
+    if provider == "groq":
+        llm_client = get_groq_client(temperature=temperature)
+    else:
+        llm_client = get_mistral_client(temperature=temperature)
 
     # Build the schema description for the prompt
     schema_json = _json.dumps(output_model.model_json_schema(), indent=2)
@@ -564,14 +755,14 @@ Respond ONLY with the JSON object, no markdown fences, no explanation."""
         ("human", "{context}"),
     ])
 
-    llm = mistral_client._get_llm()
+    llm = llm_client._get_llm()
     chain = chain_prompt | llm | StrOutputParser()
 
     last_error = None
 
     for attempt in range(max_retries + 1):
         try:
-            raw = mistral_client.invoke_with_retry(
+            raw = llm_client.invoke_with_retry(
                 chain,
                 {"context": context},
                 operation_name=f"structured output ({output_model.__name__})",
