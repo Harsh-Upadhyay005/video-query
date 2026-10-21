@@ -12,9 +12,16 @@ Works uniformly for PDF documents and audio/video transcripts.
 Preserves metadata (pages, timestamps) when available.
 """
 
+import os
 from typing import List, Dict, Any, Optional
 from core.logger import get_logger
-from core.mistral_client import get_mistral_client, MistralRateLimitError
+
+# Select the LLM client by provider: Groq when LLM_PROVIDER=groq, else Mistral.
+_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mistral").lower()
+if _LLM_PROVIDER == "groq":
+    from core.groq_llm_client import get_groq_client as _get_llm_client, GroqRateLimitError as RateLimitError
+else:
+    from core.mistral_client import get_mistral_client as _get_llm_client, MistralRateLimitError as RateLimitError
 
 try:
     from langchain_core.prompts import ChatPromptTemplate
@@ -43,7 +50,7 @@ class WholeContentProcessor:
     
     def __init__(self):
         """Initialize whole content processor."""
-        self.mistral_client = get_mistral_client(temperature=0.3)
+        self.llm_client = _get_llm_client(temperature=0.3)
         logger.info("[WholeContent] Processor initialized")
     
     def process_summary_request(
@@ -252,8 +259,8 @@ class WholeContentProcessor:
             List of section summaries (in original order)
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        llm = self.mistral_client._get_llm()
+
+        llm = self.llm_client._get_llm()
         if llm is None:
             logger.error("[WholeContent] LLM not available")
             return []
@@ -278,16 +285,16 @@ class WholeContentProcessor:
         def _summarize_one(idx: int, section: List[Document]) -> tuple:
             section_text = self._format_section_with_metadata(section)
             logger.info(f"[WholeContent] Summarizing section {idx+1}/{total} ({len(section_text)} chars)")
-            summary = self.mistral_client.invoke_with_retry(
+            summary = self.llm_client.invoke_with_retry(
                 map_chain,
                 {"text": section_text},
                 operation_name=f"section summarization {idx+1}/{total}"
             )
             return idx, summary
-        
+
         # Use up to 4 parallel workers for Mistral API calls
         max_workers = min(4, total)
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(_summarize_one, i, section): i
@@ -298,7 +305,7 @@ class WholeContentProcessor:
                 try:
                     i, summary = future.result()
                     results[i] = summary
-                except MistralRateLimitError as e:
+                except RateLimitError as e:
                     logger.error(f"[WholeContent] Rate limit on section {idx+1}: {e}")
                     # Don't submit more — break out
                     break
@@ -354,7 +361,7 @@ class WholeContentProcessor:
         Returns:
             Final combined summary
         """
-        llm = self.mistral_client._get_llm()
+        llm = self.llm_client._get_llm()
         if llm is None:
             logger.error("[WholeContent] LLM not available for combining")
             return "\n\n".join(section_summaries)
@@ -378,15 +385,15 @@ class WholeContentProcessor:
         try:
             logger.info("[WholeContent] Combining section summaries")
             
-            final_summary = self.mistral_client.invoke_with_retry(
+            final_summary = self.llm_client.invoke_with_retry(
                 reduce_chain,
                 {"text": combined_text},
                 operation_name="summary combination"
             )
-            
+
             return final_summary
-            
-        except MistralRateLimitError as e:
+
+        except RateLimitError as e:
             logger.error(f"[WholeContent] Rate limit on combination: {e}")
             return combined_text  # Return combined as fallback
         except Exception as e:
