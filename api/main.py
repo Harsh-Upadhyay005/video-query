@@ -30,7 +30,15 @@ logger = get_logger(__name__)
 
 
 def _cors_settings() -> Tuple[List[str], bool]:
-    """Return allowed origins and whether credentials are allowed."""
+    """Return allowed origins and whether credentials are allowed.
+
+    Production strategy:
+    - Use wildcard ["*"] to support Vercel preview deployments, SSE streams
+      (EventSource cannot send credentials), and Chrome extension origins.
+    - Credentials are disabled with wildcard, which is fine because auth is
+      handled via ``Authorization: Bearer`` header — not cookies.
+    - In development, use explicit local origins.
+    """
     environment = os.getenv("ENVIRONMENT", "development").lower()
     raw = os.getenv(
         "CORS_ORIGINS",
@@ -38,30 +46,30 @@ def _cors_settings() -> Tuple[List[str], bool]:
     )
     all_origins = [o.strip() for o in raw.split(",") if o.strip()]
 
-    # Separate extension entries from real origins
-    real_origins = [o for o in all_origins if "chrome-extension" not in o and o != "*"]
     has_extension = any("chrome-extension" in o for o in all_origins)
+    has_wildcard = "*" in all_origins
 
-    if environment == "production":
-        if not real_origins:
-            real_origins = ["http://localhost:5173"]
-            logger.warning(
-                "CORS_ORIGINS has no real origins in production; defaulting to http://localhost:5173"
-            )
-
-    # Chrome extensions use a random per-install ID so we cannot list them
-    # statically. When an extension entry is present we add a wildcard but
-    # keep the real origins too so that auth credentials still work for the
-    # web frontend.
-    if has_extension:
-        # Return wildcard — browser won't send credentials with "*" which is
-        # fine for the extension (it sets headers manually). The web frontend
-        # also works because fetch() without credentials is the default.
-        logger.info("[CORS] chrome-extension entry detected — allowing all origins")
+    if environment == "production" or has_extension or has_wildcard:
+        # In production we MUST use wildcard because:
+        # 1. EventSource (SSE) cannot send credentials — specific origins +
+        #    credentials=True blocks the stream entirely in the browser.
+        # 2. Vercel generates random preview-deployment URLs that we can't
+        #    pre-register.
+        # 3. Chrome extensions use per-install random origin IDs.
+        #
+        # With "*" the browser will NOT send cookies, but that's fine —
+        # our auth uses the Authorization header, not cookies.
+        logger.info(
+            "[CORS] Production / extension mode — allowing all origins "
+            "(credentials disabled; auth uses Bearer header)"
+        )
         return ["*"], False
 
-    allow_credentials = "*" not in real_origins
-    return real_origins, allow_credentials
+    # Development — explicit origins, credentials allowed for convenience
+    real_origins = [o for o in all_origins if o != "*"]
+    if not real_origins:
+        real_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    return real_origins, True
 
 
 @asynccontextmanager
