@@ -251,6 +251,7 @@ tmp/
 temp/
 *.tmp
 *.temp
+.tmp_probe/
 
 # OS specific
 .DS_Store
