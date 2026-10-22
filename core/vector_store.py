@@ -88,9 +88,8 @@ def get_embeddings():
             model_name=EMBEDDING_MODEL,
             model_kwargs={"device": device},
             encode_kwargs={
-                "batch_size": 128,  # Increased from 64 for faster processing
+                "batch_size": 128,
                 "normalize_embeddings": True,
-                "show_progress_bar": False  # Reduce logging overhead
             }
         )
         logger.info("[VectorStore] Embeddings model initialized and cached")
