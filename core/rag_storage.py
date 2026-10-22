@@ -60,6 +60,7 @@ class RAGStorage:
         self._live_chains: Dict[str, Any] = {}
         self._session_order: list = []
         self._using_redis = False
+        self._max_live_chains = 3  # Cap in-memory RAG chains to limit RAM usage
         
         # Try to connect to Redis
         if REDIS_AVAILABLE:
@@ -101,29 +102,34 @@ class RAGStorage:
         """
         ttl = ttl or self.default_ttl
         key = self._make_key(session_id)
-        
+
         try:
-            # Keep the live object. Chroma / HuggingFace embeddings are not reliably
-            # pickleable, so we persist only lightweight session metadata.
+            # Evict oldest chain if we're at the memory cap
+            if session_id not in self._live_chains and len(self._live_chains) >= self._max_live_chains:
+                oldest = self._session_order[0]
+                del self._live_chains[oldest]
+                self._session_order.pop(0)
+                logger.info(f"[RAGStorage] Evicted oldest chain to free memory: {oldest}")
+
             self._live_chains[session_id] = rag_chain
             if session_id in self._session_order:
                 self._session_order.remove(session_id)
             self._session_order.append(session_id)
-            
+
             metadata = json.dumps({
                 "source_id": session_id,
                 "ts": time.time()
             }).encode("utf-8")
-            
+
             if self._using_redis and self.redis_client:
                 self.redis_client.setex(key, ttl, metadata)
                 logger.info(f"[RAGStorage]   Stored session metadata in Redis: {session_id} (TTL: {ttl}s)")
             else:
                 self._in_memory_store[key] = metadata
                 logger.info(f"[RAGStorage]   Stored live RAG chain: {session_id}")
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"[RAGStorage] Failed to store {session_id}: {e}")
             return False

@@ -68,7 +68,11 @@ def _get_collection_name(video_id: str = None) -> str:
 
 # Singleton cache for embeddings model
 _embeddings_instance = None
-_docs_cache = {}
+
+# Document cache with a max size — evicts oldest entries beyond MAX_CACHED_SESSIONS
+import collections
+MAX_CACHED_SESSIONS = 3
+_docs_cache: collections.OrderedDict = collections.OrderedDict()
 
 
 def get_embeddings():
@@ -88,7 +92,7 @@ def get_embeddings():
             model_name=EMBEDDING_MODEL,
             model_kwargs={"device": device},
             encode_kwargs={
-                "batch_size": 128,
+                "batch_size": 32,
                 "normalize_embeddings": True,
             }
         )
@@ -220,59 +224,51 @@ def get_retriever(vector_store: Chroma, k: int = 4):
 
 
 def _persist_documents(docs: List[Document], video_id: str = None):
-    """
-    Persist chunked documents for BM25 retrieval.
-    
-    BM25Retriever is in-memory and needs documents to be rebuilt on load.
-    We persist them as pickle files keyed by video_id.
-    
-    Args:
-        docs: List of Document chunks
-        video_id: Video/source identifier
-    """
+    """Persist chunked documents for BM25 retrieval, evicting oldest cache entry if full."""
     try:
         collection_name = _get_collection_name(video_id)
+
+        # Evict oldest entry if we're at capacity
+        if collection_name not in _docs_cache and len(_docs_cache) >= MAX_CACHED_SESSIONS:
+            _docs_cache.popitem(last=False)
+
         _docs_cache[collection_name] = docs
+        _docs_cache.move_to_end(collection_name)
+
         docs_path = os.path.join(DOCS_DIR, f"{collection_name}_docs.pkl")
-        
         with open(docs_path, 'wb') as f:
             pickle.dump(docs, f)
-        
-        logger.info(f"[VectorStore]   Persisted {len(docs)} documents to memory and {docs_path}")
-        
+
+        logger.info(f"[VectorStore]   Persisted {len(docs)} documents (cache size: {len(_docs_cache)})")
+
     except Exception as e:
         logger.error(f"[VectorStore] Failed to persist documents: {e}")
 
 
 def _load_documents(video_id: str = None) -> Optional[List[Document]]:
-    """
-    Load persisted documents for BM25 retrieval.
-    Checks memory cache first to avoid disk I/O.
-    
-    Args:
-        video_id: Video/source identifier
-        
-    Returns:
-        List of Document chunks or None if not found
-    """
+    """Load persisted documents for BM25, checking memory cache first."""
     try:
         collection_name = _get_collection_name(video_id)
         if collection_name in _docs_cache:
+            _docs_cache.move_to_end(collection_name)
             return _docs_cache[collection_name]
 
         docs_path = os.path.join(DOCS_DIR, f"{collection_name}_docs.pkl")
-        
         if not os.path.exists(docs_path):
             logger.warning(f"[VectorStore] No persisted documents found at {docs_path}")
             return None
-        
+
         with open(docs_path, 'rb') as f:
             docs = pickle.load(f)
-        
+
+        # Evict oldest if at capacity before adding
+        if len(_docs_cache) >= MAX_CACHED_SESSIONS:
+            _docs_cache.popitem(last=False)
+
         _docs_cache[collection_name] = docs
         logger.info(f"[VectorStore]   Loaded {len(docs)} persisted documents from disk")
         return docs
-        
+
     except Exception as e:
         logger.error(f"[VectorStore] Failed to load documents: {e}")
         return None
