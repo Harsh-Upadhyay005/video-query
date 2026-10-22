@@ -45,6 +45,26 @@ function PDFAnalyzer({ onAnalysisComplete }: PDFAnalyzerProps) {
     setProgressMessage(`Reading pages from ${fileName}...`);
 
     try {
+      // Wake up Render if cold-starting (free tier sleeps after 15 min)
+      let backendReady = false;
+      for (let i = 0; i < 10; i++) {
+        try {
+          await apiClient.checkHealth();
+          backendReady = true;
+          break;
+        } catch {
+          if (i === 0) {
+            setProgressMessage('Server is waking up — this takes up to 30 seconds on first use…');
+          }
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
+      if (!backendReady) {
+        setError('Server is not responding. Please try again in a moment.');
+        setLoading(false);
+        return;
+      }
+      setProgressMessage(`Reading pages from ${fileName}...`);
       const handleProgress = (progress: number, details?: { stage?: string; message?: string }) => {
         setUploadProgress(progress);
         if (details?.stage) setProgressStage(details.stage);
@@ -274,7 +294,9 @@ function PDFAnalyzer({ onAnalysisComplete }: PDFAnalyzerProps) {
                 <h3 className="text-xs sm:text-sm font-bold text-red-900 mb-0.5">Error</h3>
                 <p className="text-xs sm:text-sm text-red-700 break-words">{error}</p>
                 <p className="text-[11px] sm:text-xs text-red-600 mt-1.5">
-                  Make sure the backend is running and the file is a valid PDF.
+                  {error.toLowerCase().includes('waking') || error.toLowerCase().includes('responding')
+                    ? 'The server is starting up. Wait a moment and try again.'
+                    : 'Make sure the file is a valid PDF under 100MB.'}
                 </p>
               </div>
             </div>
