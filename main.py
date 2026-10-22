@@ -248,22 +248,17 @@ def run_pipeline(
         
         try:
             from core.analysis_service import get_analysis_service
-            
-            from concurrent.futures import ThreadPoolExecutor
-            
-            # Execute RAG analysis tasks concurrently (cuts analysis time by ~75%)
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                fut_summary = executor.submit(analysis_service.generate_summary, rag_chain.vector_store, 30)
-                fut_actions = executor.submit(analysis_service.extract_action_items, rag_chain.vector_store, 20)
-                fut_decisions = executor.submit(analysis_service.extract_key_decisions, rag_chain.vector_store, 20)
-                fut_questions = executor.submit(analysis_service.extract_open_questions, rag_chain.vector_store, 20)
-                
-                summary = fut_summary.result()
-                action_items = fut_actions.result()
-                key_decisions = fut_decisions.result()
-                open_questions = fut_questions.result()
-            
-            logger.info("[Pipeline]   Analysis complete (concurrent RAG retrieval was used)")
+
+            analysis_service = get_analysis_service()
+
+            # Run analysis tasks sequentially to stay within 512MB Render free tier RAM
+            # (concurrent execution spiked memory and caused OOM restarts)
+            summary       = analysis_service.generate_summary(rag_chain.vector_store, 30)
+            action_items  = analysis_service.extract_action_items(rag_chain.vector_store, 20)
+            key_decisions = analysis_service.extract_key_decisions(rag_chain.vector_store, 20)
+            open_questions= analysis_service.extract_open_questions(rag_chain.vector_store, 20)
+
+            logger.info("[Pipeline]   Analysis complete (sequential RAG retrieval)")
             
             stage_results['analysis'] = StageResult(
                 stage="analysis",

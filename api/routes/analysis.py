@@ -569,7 +569,9 @@ async def process_uploaded_file_with_progress(
         
         from core.source_types import PipelineMode
         is_pdf_upload = file_path.lower().endswith(".pdf")
-        pipeline_mode = PipelineMode.INGEST_WITH_ANALYSIS if is_pdf_upload else PipelineMode.INGEST_ONLY
+        # Use INGEST_ONLY for all uploads to stay within 512MB Render free tier RAM.
+        # LLM analysis runs on-demand when the user asks questions in chat.
+        pipeline_mode = PipelineMode.INGEST_ONLY
 
         # Run the pipeline in a thread to avoid blocking the event loop
         result = await asyncio.to_thread(

@@ -84,6 +84,10 @@ async def lifespan(app: FastAPI):
         import base64
         cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
         if cookies_b64:
+            # Fix base64 padding if missing
+            padding = 4 - len(cookies_b64) % 4
+            if padding != 4:
+                cookies_b64 += "=" * padding
             cookies_path = "/tmp/youtube_cookies.txt"
             with open(cookies_path, "wb") as f:
                 f.write(base64.b64decode(cookies_b64))
