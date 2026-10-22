@@ -79,8 +79,9 @@ python-jose[cryptography]==3.3.0
 httpx
 
 # ============================================================
-# Testing
+# Redis (for RAG chain session persistence across restarts)
 # ============================================================
+redis==5.0.1
 pytest==8.1.1
 pytest-asyncio==0.23.5
 pytest-cov==4.1.0

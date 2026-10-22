@@ -50,5 +50,5 @@ supabase
 # Authentication
 python-jose[cryptography]==3.3.0
 
-# HTTP
-httpx
+# Redis (for RAG chain session persistence across restarts)
+redis==5.0.1
