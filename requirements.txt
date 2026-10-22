@@ -36,6 +36,7 @@ langchain-community==0.2.16
 langchain-mistralai==0.1.12
 langchain-groq==0.1.9
 langchain-huggingface==0.0.3
+langchain-chroma==0.1.4
 mistralai==0.4.2
 
 # ============================================================

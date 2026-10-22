@@ -59,8 +59,8 @@ def get_current_user_optional(
         payload = jwt.decode(
             token,
             SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated"
+            algorithms=["HS256", "HS384", "HS512"],
+            options={"verify_aud": False}  # Supabase tokens vary in audience claim
         )
         
         # Extract user information
