@@ -19,11 +19,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         gcc \
         g++ \
+        libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Non-root user ─────────────────────────────────────────────────────────────
+# ── Environment ───────────────────────────────────────────────────────────────
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    ENVIRONMENT=production \
+    LOG_LEVEL=INFO \
+    HF_HOME=/app/.cache/huggingface \
+    TRANSFORMERS_CACHE=/app/.cache/huggingface
+
+# ── Non-root user & directories ───────────────────────────────────────────────
 RUN useradd -m -u 1000 -s /bin/bash appuser \
-    && mkdir -p /app/downloads /app/logs /app/vector_db /app/vector_db_docs \
+    && mkdir -p /app/downloads /app/logs /app/vector_db /app/vector_db_docs /app/temp /app/.cache/huggingface \
     && chown -R appuser:appuser /app
 
 WORKDIR /app
@@ -38,28 +47,20 @@ COPY requirements-app.txt .
 RUN pip install --no-cache-dir -r requirements-app.txt
 
 # ── Layer 3: Pre-download embedding + reranker models into the image ──────────
-# This means the first request never blocks on a 400 MB download.
+# Pre-download into HF_HOME (/app/.cache/huggingface) and set ownership for appuser
 RUN python -c "\
 from sentence_transformers import SentenceTransformer, CrossEncoder; \
 SentenceTransformer('all-MiniLM-L6-v2'); \
 CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2'); \
-print('Models cached.')"
+print('Models cached successfully.')" \
+    && chown -R appuser:appuser /app/.cache
 
 # ── Application code (invalidates only when code changes) ────────────────────
 COPY --chown=appuser:appuser . .
 
-# ── Runtime directories ───────────────────────────────────────────────────────
-RUN mkdir -p downloads logs vector_db vector_db_docs \
-    && chown -R appuser:appuser downloads logs vector_db vector_db_docs
-
-# ── Environment ───────────────────────────────────────────────────────────────
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    ENVIRONMENT=production \
-    LOG_LEVEL=INFO \
-    # Point HuggingFace cache at a writable path inside the image
-    HF_HOME=/app/.cache/huggingface \
-    TRANSFORMERS_CACHE=/app/.cache/huggingface
+# ── Runtime directory permissions ─────────────────────────────────────────────
+RUN mkdir -p downloads logs vector_db vector_db_docs temp .cache/huggingface \
+    && chown -R appuser:appuser /app
 
 USER appuser
 

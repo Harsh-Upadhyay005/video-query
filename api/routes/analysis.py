@@ -338,9 +338,13 @@ async def stream_progress(job_id: str):
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"  # Disable nginx buffering
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
         }
     )
 
@@ -569,9 +573,9 @@ async def process_uploaded_file_with_progress(
         
         from core.source_types import PipelineMode
         is_pdf_upload = file_path.lower().endswith(".pdf")
-        # Use INGEST_ONLY for all uploads to stay within 512MB Render free tier RAM.
-        # LLM analysis runs on-demand when the user asks questions in chat.
-        pipeline_mode = PipelineMode.INGEST_ONLY
+        # Run full analysis sequentially so summary, action items, and key decisions
+        # are generated for the user without spiking memory.
+        pipeline_mode = PipelineMode.INGEST_WITH_ANALYSIS
 
         # Run the pipeline in a thread to avoid blocking the event loop
         result = await asyncio.to_thread(

@@ -49,7 +49,13 @@ def _cors_settings() -> Tuple[List[str], bool]:
     has_extension = any("chrome-extension" in o for o in all_origins)
     has_wildcard = "*" in all_origins
 
-    if environment == "production" or has_extension or has_wildcard:
+    if (
+        environment == "production"
+        or has_extension
+        or has_wildcard
+        or any("vercel.app" in o for o in all_origins)
+        or any("onrender.com" in o for o in all_origins)
+    ):
         # In production we MUST use wildcard because:
         # 1. EventSource (SSE) cannot send credentials — specific origins +
         #    credentials=True blocks the stream entirely in the browser.
@@ -60,7 +66,7 @@ def _cors_settings() -> Tuple[List[str], bool]:
         # With "*" the browser will NOT send cookies, but that's fine —
         # our auth uses the Authorization header, not cookies.
         logger.info(
-            "[CORS] Production / extension mode — allowing all origins "
+            "[CORS] Production / wildcard mode — allowing all origins "
             "(credentials disabled; auth uses Bearer header)"
         )
         return ["*"], False
@@ -177,8 +183,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
     allow_credentials=_CORS_CREDENTIALS,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # GZip Middleware for response compression
