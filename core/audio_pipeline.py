@@ -135,11 +135,9 @@ class AudioPipeline:
                 )
                 return result
             else:
-                logger.info("[AudioPipeline] Captions unavailable or low quality. Proceeding to audio download + STT fallback.")
+                logger.info("[AudioPipeline] Captions unavailable or low quality. Falling back to audio download + STT.")
                 if progress_callback:
-                    progress_callback("audio_processing", "Captions unavailable. Falling back to audio download...", 12)
-        elif source_type == SourceType.YOUTUBE and video_id:
-            logger.info("[AudioPipeline] Skipping caption-first path: Groq STT is configured")
+                    progress_callback("audio_processing", "Captions unavailable. Attempting audio download...", 12)
         
         # STEP 1: Download/extract audio
         logger.info("[AudioPipeline] STEP 1: Audio extraction")
@@ -153,10 +151,21 @@ class AudioPipeline:
             try:
                 audio_chunks = process_input(source)
                 logger.info(f"[AudioPipeline]   Downloaded: {len(audio_chunks)} chunks")
-                
+
             except Exception as e:
-                logger.error(f"[AudioPipeline] YouTube download failed: {e}")
-                raise Exception(f"Failed to download YouTube video: {e}")
+                err = str(e)
+                logger.error(f"[AudioPipeline] YouTube download failed: {err}")
+                # On cloud servers YouTube blocks automated downloads.
+                # Give the user a clear actionable message instead of a raw yt-dlp traceback.
+                raise Exception(
+                    "YouTube download failed — the server's IP address is blocked by YouTube.\n\n"
+                    "Solutions:\n"
+                    "1. Most YouTube videos have captions which work instantly. "
+                    "Try a different English video (e.g. a tech talk or lecture).\n"
+                    "2. Download the video yourself using cobalt.tools or yt-dlp locally, "
+                    "then upload the MP3/MP4 file using the Upload File tab.\n"
+                    f"\nTechnical detail: {err[:200]}"
+                )
                 
         elif source_type in [SourceType.VIDEO, SourceType.AUDIO]:
             logger.info("[AudioPipeline] Processing local audio/video file...")
