@@ -55,7 +55,7 @@ class EnvValidator:
             "description": "Groq chat model name (used when LLM_PROVIDER=groq)",
             "validation": lambda v: len(v) > 0,
             "error": "Must be a non-empty model name",
-            "default": "llama-3.3-70b-versatile"
+            "default": "openai/gpt-oss-20b"
         }
     }
     
@@ -361,7 +361,7 @@ class EnvValidator:
         safe_vars = {
             "ENVIRONMENT": os.getenv("ENVIRONMENT", "development"),
             "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "mistral"),
-            "GROQ_LLM_MODEL": os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile"),
+            "GROQ_LLM_MODEL": os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-20b"),
             "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
             "WHISPER_MODEL": os.getenv("WHISPER_MODEL", "small"),
             "WHISPER_DEVICE": os.getenv("WHISPER_DEVICE", "cpu"),

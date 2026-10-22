@@ -129,7 +129,7 @@ class AppConfig:
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     sarvam: Optional[SarvamConfig] = None
     mistral: Optional[MistralConfig] = None
-    groq_llm_model: str = "llama-3.3-70b-versatile"
+    groq_llm_model: str = "openai/gpt-oss-20b"
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
@@ -260,7 +260,7 @@ class ConfigManager:
                     )
 
             # Groq LLM model name (used by core.groq_llm_client via env, mirrored here)
-            groq_llm_model = os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
+            groq_llm_model = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-20b")
             
             # Vector store config
             vector_store = VectorStoreConfig(

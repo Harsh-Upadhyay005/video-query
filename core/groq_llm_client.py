@@ -42,7 +42,7 @@ class GroqClient:
 
     def __init__(
         self,
-        model: str = "llama-3.3-70b-versatile",
+        model: str = "openai/gpt-oss-20b",
         temperature: float = 0.3,
         max_retries: int = 5,
         initial_retry_delay: float = 2.0,
@@ -218,7 +218,7 @@ def get_groq_client(
     global _groq_client
 
     if _groq_client is None:
-        resolved_model = model or os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
+        resolved_model = model or os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-20b")
         _groq_client = GroqClient(model=resolved_model, temperature=temperature, **kwargs)
 
     return _groq_client
