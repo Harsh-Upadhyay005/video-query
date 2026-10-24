@@ -49,20 +49,20 @@ interface ContentProps {
 
 function Content({ onNavigateToStudio }: ContentProps) {
   return (
-    <div className="relative z-10 flex max-w-3xl flex-col items-center pb-24 sm:pb-36 text-center px-4 sm:px-6">
+    <div className="relative z-10 flex max-w-3xl flex-col items-center text-center px-4 sm:px-6">
       <h1 className="font-['Baskervville',serif] text-4xl sm:text-6xl md:text-7xl leading-[1.15] tracking-tight">
         <span className="text-[#8A8A8A]">Analyze video.</span>{" "}
         <span className="text-[#1A1A1A]">Ask anything.</span>
       </h1>
 
-      <p className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base md:text-lg leading-relaxed text-[#1A1A1A]/80">
+      <p className="mt-3 sm:mt-5 max-w-xl text-sm sm:text-base md:text-lg leading-relaxed text-[#1A1A1A]/80">
         Transform YouTube videos, MP3 audio files, and MP4 recordings into clean transcripts, executive summaries, and interactive RAG-powered Q&A. Upload any media file or paste a link—then chat with your content instantly.
       </p>
 
-      <div className="mt-6 sm:mt-8 flex flex-col items-center gap-3 w-full max-w-md">
+      <div className="mt-5 sm:mt-7 flex flex-col items-center gap-2.5 w-full max-w-md">
         <button
           onClick={onNavigateToStudio}
-          className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-black bg-[#D9CCF5] px-6 py-3.5 text-sm sm:text-base font-semibold text-[#1A1A1A] transition-all hover:scale-105 active:scale-95 shadow-sm hover:bg-[#cbb8f0]"
+          className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-black bg-[#D9CCF5] px-6 py-3 text-sm sm:text-base font-semibold text-[#1A1A1A] transition-all hover:scale-105 active:scale-95 shadow-sm hover:bg-[#cbb8f0]"
         >
           <svg className="w-4 h-4 text-[#1A1A1A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -151,13 +151,17 @@ interface HeroProps {
 
 function Hero({ onNavigateToStudio }: HeroProps) {
   return (
-    <section className="relative flex min-h-[90vh] sm:min-h-screen w-full items-center justify-center overflow-x-hidden bg-[#FDFCF0] px-4 sm:px-6 py-20 sm:py-24">
-      <Content onNavigateToStudio={onNavigateToStudio} />
+    <section className="relative flex flex-col h-full w-full items-center justify-between overflow-hidden bg-[#FDFCF0] px-4 sm:px-6 pt-20 sm:pt-24 pb-6 sm:pb-8">
+      {/* Centered content */}
+      <div className="my-auto flex flex-col items-center w-full">
+        <Content onNavigateToStudio={onNavigateToStudio} />
+      </div>
 
-      <div className="absolute bottom-16 sm:bottom-28 left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-3">
+      {/* Waveform pill at bottom */}
+      <div className="relative z-30 flex flex-col items-center gap-2 shrink-0">
         <div className="relative w-24 sm:w-28 overflow-visible">
           <SVGAnimation />
-          <div className="relative z-10 flex h-16 sm:h-20 w-full items-center overflow-hidden rounded-full border-2 border-black bg-white shadow-sm">
+          <div className="relative z-10 flex h-14 sm:h-18 w-full items-center overflow-hidden rounded-full border-2 border-black bg-white shadow-sm">
             <WaveformMarquee />
           </div>
         </div>
@@ -191,7 +195,7 @@ export const WisprHero: React.FC<WisprHeroProps> = ({
   }, []);
 
   return (
-    <div className="h-full min-h-full w-full overflow-hidden">
+    <div className="h-screen h-[100dvh] max-h-screen w-full overflow-hidden">
       <Hero onNavigateToStudio={onNavigateToStudio} />
     </div>
   );
@@ -214,7 +218,7 @@ export default function WisprVideoQueryAnimation() {
   }, []);
 
   return (
-    <div className="h-full min-h-full w-full overflow-hidden">
+    <div className="h-screen h-[100dvh] max-h-screen w-full overflow-hidden">
       <Hero />
     </div>
   );
