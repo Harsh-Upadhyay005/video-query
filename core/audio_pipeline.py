@@ -155,17 +155,7 @@ class AudioPipeline:
             except Exception as e:
                 err = str(e)
                 logger.error(f"[AudioPipeline] YouTube download failed: {err}")
-                # On cloud servers YouTube blocks automated downloads.
-                # Give the user a clear actionable message instead of a raw yt-dlp traceback.
-                raise Exception(
-                    "YouTube download failed — the server's IP address is blocked by YouTube.\n\n"
-                    "Solutions:\n"
-                    "1. Most YouTube videos have captions which work instantly. "
-                    "Try a different English video (e.g. a tech talk or lecture).\n"
-                    "2. Download the video yourself using cobalt.tools or yt-dlp locally, "
-                    "then upload the MP3/MP4 file using the Upload File tab.\n"
-                    f"\nTechnical detail: {err[:200]}"
-                )
+                raise Exception(f"YouTube download failed: {err}") from e
                 
         elif source_type in [SourceType.VIDEO, SourceType.AUDIO]:
             logger.info("[AudioPipeline] Processing local audio/video file...")

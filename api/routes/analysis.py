@@ -255,7 +255,14 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
         # Map error types to user-friendly messages
         if "YouTube" in error_message or "youtube" in error_message:
             error_code = "YOUTUBE_DOWNLOAD_ERROR"
-            if "cookie" in error_message.lower():
+            if "not valid UTF-8" in error_message or "YOUTUBE_COOKIES_BASE64" in error_message:
+                error_code = "YOUTUBE_COOKIE_FORMAT_ERROR"
+                error_message = (
+                    "The configured YouTube cookie export is not valid UTF-8. "
+                    "Export a Netscape cookies.txt file as UTF-8, base64-encode it, "
+                    "and set YOUTUBE_COOKIES_BASE64 in Render."
+                )
+            elif "cookie" in error_message.lower():
                 error_code = "YOUTUBE_COOKIE_ERROR"
                 error_message = (
                     "YouTube download failed due to authentication issues. "
@@ -668,5 +675,4 @@ async def process_uploaded_file_with_progress(
         })
         # Clean up on error
         file_manager.cleanup_job(job_id)
-
 

@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import base64
 from pathlib import Path
 from typing import Optional
 
@@ -207,6 +208,7 @@ def _find_wav(ydl: "yt_dlp.YoutubeDL", info: dict) -> Optional[str]:
 
 
 def _base_ydl_opts(output_path: str) -> dict:
+    node_path = shutil.which("node") or "node"
     return {
         "format": "bestaudio/best",
         "outtmpl": output_path,
@@ -221,10 +223,11 @@ def _base_ydl_opts(output_path: str) -> dict:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
-        # tv_embedded bypasses bot-detection on headless/cloud servers without cookies
+        "js_runtimes": {"node": {"executable": node_path}},
         "extractor_args": {
             "youtube": {
                 "player_client": ["tv_embedded", "web_creator", "android"],
+                "player_skip": ["webpage", "configs"],
             }
         },
         "postprocessors": [{
@@ -235,19 +238,59 @@ def _base_ydl_opts(output_path: str) -> dict:
     }
 
 
+def _prepare_cookie_file() -> tuple[Optional[str], Optional[str]]:
+    """Return a validated cookie file and an optional temporary path to remove."""
+    encoded_cookies = os.getenv("YOUTUBE_COOKIES_BASE64")
+    if encoded_cookies:
+        try:
+            cookie_bytes = base64.b64decode(encoded_cookies, validate=True)
+            cookie_bytes.decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise RuntimeError(
+                "YOUTUBE_COOKIES_BASE64 must contain a base64-encoded UTF-8 "
+                f"Netscape cookies.txt file: {exc}"
+            ) from exc
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".txt", prefix="youtube-cookies-", delete=False
+        ) as cookie_temp:
+            cookie_temp.write(cookie_bytes)
+        logger.info("[YouTubeDownload] Using cookies from YOUTUBE_COOKIES_BASE64")
+        return cookie_temp.name, cookie_temp.name
+
+    cookie_file = os.getenv("YOUTUBE_COOKIES_FILE")
+    if not cookie_file:
+        return None, None
+
+    cookie_path = Path(cookie_file)
+    if not cookie_path.is_file():
+        logger.warning("[YouTubeDownload] YOUTUBE_COOKIES_FILE does not exist: %s", cookie_file)
+        return None, None
+
+    try:
+        cookie_path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(
+            "YOUTUBE_COOKIES_FILE is not valid UTF-8. Export a Netscape cookies.txt "
+            f"file as UTF-8 or set YOUTUBE_COOKIES_BASE64 instead: {exc}"
+        ) from exc
+    return str(cookie_path), None
+
+
 def download_youtube_audio(url: str) -> str:
     """
     Download audio from a YouTube URL.
 
     Strategy (in order):
     1. Skip re-download if WAV already exists on disk.
-    2. Try YOUTUBE_COOKIES_FILE if set in environment.
+    2. Try YOUTUBE_COOKIES_BASE64 or YOUTUBE_COOKIES_FILE if set in environment.
     3. Try extracting cookies from installed browsers (local dev only).
     4. Try multiple player clients without cookies (tv_embedded, web_creator, mweb, android).
 
     On Render/cloud servers: steps 2 and 4 are the only ones that work.
-    Set YOUTUBE_COOKIES_FILE in Render environment to a Netscape cookies.txt
-    exported from your browser while logged in to YouTube.
+    Set YOUTUBE_COOKIES_BASE64 in Render to avoid multiline/encoding issues with
+    a Netscape cookies.txt export from your browser.
     """
     logger.info(f"[YouTubeDownload] Starting download: {url}")
 
@@ -275,10 +318,11 @@ def download_youtube_audio(url: str) -> str:
 
     import tempfile
 
-    # --- STEP 1: explicit YOUTUBE_COOKIES_FILE (works on Render) ---
-    cookie_file_env = os.getenv("YOUTUBE_COOKIES_FILE")
-    if cookie_file_env and Path(cookie_file_env).is_file():
-        logger.info(f"[YouTubeDownload] Trying with YOUTUBE_COOKIES_FILE...")
+    # --- STEP 1: explicit cookie file (works on Render) ---
+    cookie_file_temp = None
+    cookie_file_env, cookie_file_temp = _prepare_cookie_file()
+    if cookie_file_env:
+        logger.info("[YouTubeDownload] Trying with configured cookies...")
         try:
             opts = _base_ydl_opts(output_path)
             opts["cookiefile"] = cookie_file_env
@@ -287,7 +331,7 @@ def download_youtube_audio(url: str) -> str:
                 if info:
                     wav = _find_wav(ydl, info)
                     if wav:
-                        logger.info(f"[YouTubeDownload] ✅ SUCCESS with cookie file: {wav}")
+                        logger.info(f"[YouTubeDownload] SUCCESS with configured cookies: {wav}")
                         return wav
         except Exception as e:
             err_str = str(e)
@@ -297,7 +341,16 @@ def download_youtube_audio(url: str) -> str:
                 raise RuntimeError(
                     "This video is private or members-only. Please use a public video "
                     "or upload the file directly."
-                )
+                ) from e
+        finally:
+            if cookie_file_temp and Path(cookie_file_temp).exists():
+                try:
+                    Path(cookie_file_temp).unlink()
+                except OSError as cleanup_error:
+                    logger.warning(
+                        "[YouTubeDownload] Failed to remove temporary cookie file: %s",
+                        cleanup_error,
+                    )
 
     # --- STEP 2: browser cookies (local dev only — no browsers on cloud) ---
     browser_candidates = [
@@ -351,7 +404,7 @@ def download_youtube_audio(url: str) -> str:
         logger.info(f"[YouTubeDownload] Trying client={client} without cookies...")
         try:
             opts = _base_ydl_opts(output_path)
-            opts["extractor_args"] = {"youtube": {"player_client": [client]}}
+            opts["extractor_args"]["youtube"]["player_client"] = [client]
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 if info:
@@ -373,12 +426,12 @@ def download_youtube_audio(url: str) -> str:
     raise RuntimeError(
         f"YouTube download failed after trying all available methods.\n\n"
         f"Errors:\n{error_summary}\n\n"
-        f"YouTube is blocking downloads from this server's IP address.\n\n"
+        f"YouTube is blocking downloads from this server's IP address or requires authentication.\n\n"
         f"Solutions:\n"
         f"  1. BEST: Most YouTube videos have captions — the app tries those first automatically.\n"
         f"     If you see this error, this video has no captions. Try a different video.\n"
         f"  2. Upload the video file directly instead of providing a URL.\n"
-        f"  3. Set YOUTUBE_COOKIES_FILE in Render environment (see docs/DEPLOYMENT.md).\n"
+        f"  3. Set YOUTUBE_COOKIES_BASE64 with a UTF-8 Netscape cookies.txt export.\n"
         f"\nURL: {url}"
     )
 
@@ -535,4 +588,3 @@ def process_input(source: str) -> list:
     chunks = chunk_audio(wav_path, chunk_minutes=25)
     logger.info(f"  Audio processing complete - {len(chunks)} chunk(s) prepared")
     return chunks
-
