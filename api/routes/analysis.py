@@ -69,6 +69,38 @@ def _persist_job_start(
         logger.warning(f"Failed to persist job start {job_id}: {exc}")
 
 
+def _persist_upload_failure(
+    job_id: str,
+    file_path: str,
+    language: str,
+    user_id: str,
+    error_message: str,
+) -> None:
+    """Persist upload-job failures so clients can recover after a restart."""
+    try:
+        from core.supabase_client import is_supabase_configured
+        from core.supabase_database import get_database_manager
+
+        if is_supabase_configured():
+            get_database_manager().save_analysis({
+                "user_id": user_id,
+                "source_type": (
+                    "pdf" if file_path.lower().endswith(".pdf")
+                    else "audio" if file_path.lower().endswith(
+                        (".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac")
+                    )
+                    else "video"
+                ),
+                "source_ref": file_path,
+                "language": language,
+                "status": "failed",
+                "error_message": error_message,
+                "job_id": job_id,
+            })
+    except Exception as persist_error:
+        logger.warning(f"[Job {job_id}] Failed to persist upload failure: {persist_error}")
+
+
 def _is_stale_processing_job(row: dict) -> bool:
     """Detect jobs whose worker stopped before writing a terminal state."""
     updated_at = row.get("updated_at") or row.get("created_at")
@@ -359,6 +391,22 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
             "error_code": error_code
         })
         progress_store[job_id]["finished_at"] = time.monotonic()
+        try:
+            from core.supabase_client import is_supabase_configured
+            from core.supabase_database import get_database_manager
+
+            if is_supabase_configured():
+                get_database_manager().save_analysis({
+                    "user_id": user_id,
+                    "source_type": "youtube" if source.startswith(("http://", "https://")) else "video",
+                    "source_ref": source,
+                    "language": language,
+                    "status": "failed",
+                    "error_message": error_message,
+                    "job_id": job_id,
+                })
+        except Exception as persist_error:
+            logger.warning(f"[Job {job_id}] Failed to persist failure state: {persist_error}")
 
 
 
@@ -788,6 +836,7 @@ async def process_uploaded_file_with_progress(
             "error": str(e)
         })
         progress_store[job_id]["finished_at"] = time.monotonic()
+        _persist_upload_failure(job_id, file_path, language, user_id, str(e))
         # Clean up on error
         file_manager.cleanup_job(job_id)
         
@@ -800,5 +849,6 @@ async def process_uploaded_file_with_progress(
             "error": str(e)
         })
         progress_store[job_id]["finished_at"] = time.monotonic()
+        _persist_upload_failure(job_id, file_path, language, user_id, str(e))
         # Clean up on error
         file_manager.cleanup_job(job_id)
