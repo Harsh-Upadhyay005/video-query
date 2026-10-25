@@ -242,89 +242,67 @@ class APIClient {
     };
   }
 
-  // Poll job progress using SSE
+  // Poll job progress through REST. This is more reliable than a long-lived
+  // SSE connection behind Render/Vercel proxies.
   async pollJobProgress(jobId, onProgress = null) {
     return new Promise((resolve, reject) => {
       let settled = false;
-      let errorCount = 0;
-      let eventSource = null;
+      let transientErrors = 0;
+      let timeoutId = null;
+      const startedAt = Date.now();
+      const timeoutMs = 30 * 60 * 1000;
 
       const finish = (fn, value) => {
         if (settled) return;
         settled = true;
-        if (eventSource) eventSource.close();
+        if (timeoutId) clearTimeout(timeoutId);
         fn(value);
       };
 
-      const connect = () => {
+      const poll = async () => {
         if (settled) return;
-        eventSource = new EventSource(`${this.baseURL}/api/v1/progress/${jobId}`);
+        if (Date.now() - startedAt >= timeoutMs) {
+          finish(reject, new Error('Analysis timed out after 30 minutes'));
+          return;
+        }
 
-        eventSource.onmessage = (event) => {
-          errorCount = 0; // reset on successful message
-          try {
-            const data = JSON.parse(event.data);
+        try {
+          const data = await this.request(`/api/v1/status/${jobId}`);
+          transientErrors = 0;
 
-            if (onProgress && data.progress != null) {
-              onProgress(data.progress, data);
-            }
-
-            if (data.status === 'completed' && data.result) {
-              finish(resolve, this.normalizeAnalysisResult(data.result, jobId));
-            } else if (data.status === 'failed') {
-              finish(reject, new Error(data.error || data.message || 'Analysis failed'));
-            }
-          } catch (err) {
-            console.error('Error parsing SSE data:', err);
+          if (onProgress && data.progress != null) {
+            onProgress(data.progress, data);
           }
-        };
 
-        eventSource.onerror = () => {
-          if (settled) { eventSource.close(); return; }
-          eventSource.close();
-          errorCount++;
-
-          // Allow up to 5 reconnect attempts with backoff before giving up
-          if (errorCount <= 5) {
-            const delay = Math.min(2000 * errorCount, 10000);
-            setTimeout(() => {
-              if (!settled) {
-                // Check job status via REST before reconnecting
-                this.request(`/api/v1/status/${jobId}`)
-                  .then((data) => {
-                    if (data.status === 'completed' && data.result) {
-                      finish(resolve, this.normalizeAnalysisResult(data.result, jobId));
-                    } else if (data.status === 'failed') {
-                      finish(reject, new Error(data.error || 'Analysis failed'));
-                    } else {
-                      connect(); // still running — reconnect SSE
-                    }
-                  })
-                  .catch((err) => {
-                    // 404 = job gone (server restart) — stop polling, don't reconnect
-                    if (err?.status === 404) {
-                      finish(reject, new Error(
-                        'The server restarted during analysis. Please submit the request again.'
-                      ));
-                    } else {
-                      connect(); // transient error — reconnect SSE
-                    }
-                  });
-              }
-            }, delay);
-          } else {
-            finish(reject, new Error('Lost connection to server. Analysis may still be in progress.'));
+          if (data.status === 'completed' && data.result) {
+            finish(resolve, this.normalizeAnalysisResult(data.result, jobId));
+            return;
           }
-        };
+          if (data.status === 'failed') {
+            finish(reject, new Error(data.error || data.message || 'Analysis failed'));
+            return;
+          }
+        } catch (error) {
+          transientErrors += 1;
+          if (error?.status === 404) {
+            finish(reject, new Error(
+              'The server restarted during analysis. Please submit the request again.'
+            ));
+            return;
+          }
+          if (transientErrors >= 10) {
+            finish(reject, new Error(
+              'The backend is temporarily unavailable. Please retry the analysis.'
+            ));
+            return;
+          }
+          console.warn(`Temporary status check failure (${transientErrors}/10)`, error);
+        }
+
+        timeoutId = setTimeout(poll, transientErrors ? 5000 : 2000);
       };
 
-      connect();
-
-      setTimeout(() => {
-        if (!settled) {
-          finish(reject, new Error('Analysis timed out after 30 minutes'));
-        }
-      }, 30 * 60 * 1000);
+      poll();
     });
   }
 
