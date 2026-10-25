@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from enum import Enum
 import asyncio
 import json
+import time
 import uuid
 
 from core.validators import InputValidator
@@ -24,6 +25,45 @@ router = APIRouter()
 
 # Store for progress updates (in production, use Redis or database)
 progress_store = {}
+_JOB_RESULT_TTL_SECONDS = 60 * 60
+
+
+def _cleanup_expired_jobs() -> None:
+    """Remove finished jobs after the reconnect window has elapsed."""
+    now = time.monotonic()
+    expired_jobs = [
+        job_id
+        for job_id, data in progress_store.items()
+        if data.get("status") in ("completed", "failed")
+        and now - data.get("finished_at", now) > _JOB_RESULT_TTL_SECONDS
+    ]
+    for job_id in expired_jobs:
+        progress_store.pop(job_id, None)
+
+
+def _persist_job_start(
+    job_id: str,
+    source: str,
+    source_type: str,
+    language: str,
+    user_id: str,
+) -> None:
+    """Persist a processing record so status survives a worker restart."""
+    try:
+        from core.supabase_client import is_supabase_configured
+        from core.supabase_database import get_database_manager
+
+        if is_supabase_configured():
+            get_database_manager().save_analysis({
+                "user_id": user_id,
+                "source_type": source_type,
+                "source_ref": source,
+                "language": language,
+                "status": "processing",
+                "job_id": job_id,
+            })
+    except Exception as exc:
+        logger.warning(f"Failed to persist job start {job_id}: {exc}")
 
 
 class LanguageEnum(str, Enum):
@@ -100,9 +140,17 @@ async def analyze_video(
             "result": None,
             "error": None
         }
-        
+
         user_id = current_user.id if current_user else "guest"
 
+        background_tasks.add_task(
+            _persist_job_start,
+            job_id,
+            validated_source,
+            "youtube" if source_type == "url" else "video",
+            language,
+            user_id,
+        )
         # Start processing in background
         background_tasks.add_task(process_analysis_with_progress, job_id, validated_source, language, user_id)
         
@@ -208,6 +256,7 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
                 "message": "Analysis complete!",
                 "result": json_safe_result
             })
+        progress_store[job_id]["finished_at"] = time.monotonic()
         
         # Persist analysis to Supabase if configured
         try:
@@ -291,6 +340,7 @@ async def process_analysis_with_progress(job_id: str, source: str, language: str
             "error": error_message,
             "error_code": error_code
         })
+        progress_store[job_id]["finished_at"] = time.monotonic()
 
 
 
@@ -305,6 +355,7 @@ async def stream_progress(job_id: str):
     """
     async def event_generator():
         """Generate SSE events."""
+        _cleanup_expired_jobs()
         if job_id not in progress_store:
             yield f"data: {json.dumps({'error': 'Job not found'})}\n\n"
             return
@@ -336,11 +387,6 @@ async def stream_progress(job_id: str):
             
             await asyncio.sleep(0.5)  # Poll every 500ms
         
-        # Clean up after completion
-        if job_id in progress_store and progress_store[job_id]["status"] in ["completed", "failed"]:
-            await asyncio.sleep(5)  # Keep result for 5 seconds
-            progress_store.pop(job_id, None)
-    
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -359,6 +405,8 @@ async def stream_progress(job_id: str):
 @router.get("/status/{job_id}")
 async def get_analysis_status(job_id: str):
     """Get the status of an analysis job."""
+
+    _cleanup_expired_jobs()
 
     # 1. Check in-process progress store (fastest)
     if job_id in progress_store:
@@ -381,7 +429,7 @@ async def get_analysis_status(job_id: str):
         if is_supabase_configured():
             db = get_database_manager()
             row = db.get_analysis_by_job_id(job_id)
-            if row and row.get("status") == "completed":
+            if row:
                 # Rebuild a minimal result dict from the persisted row
                 transcript = row.get("transcript") or ""
                 if isinstance(transcript, list):
@@ -403,6 +451,27 @@ async def get_analysis_status(job_id: str):
                     "video_id": row.get("video_id"),
                     "duration_seconds": row.get("duration_seconds"),
                 }
+                status = row.get("status", "processing")
+                if status == "processing":
+                    return {
+                        "job_id": job_id,
+                        "status": "processing",
+                        "stage": "processing",
+                        "progress": 0,
+                        "message": "Analysis is still processing.",
+                        "result": None,
+                        "error": None,
+                    }
+                if status == "failed":
+                    return {
+                        "job_id": job_id,
+                        "status": "failed",
+                        "stage": "error",
+                        "progress": 0,
+                        "message": row.get("error_message") or "Analysis failed.",
+                        "result": None,
+                        "error": row.get("error_message") or "Analysis failed.",
+                    }
                 logger.info(f"[Status] Recovered completed job from Supabase: {job_id}")
                 return {
                     "job_id": job_id,
@@ -521,6 +590,19 @@ async def upload_and_analyze(
         
         user_id = current_user.id if current_user else "guest"
 
+        upload_source_type = (
+            "pdf" if file_path.lower().endswith(".pdf")
+            else "audio" if file_path.lower().endswith((".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac"))
+            else "video"
+        )
+        background_tasks.add_task(
+            _persist_job_start,
+            job_id,
+            file_path,
+            upload_source_type,
+            validated_language,
+            user_id,
+        )
         # Start processing in background
         background_tasks.add_task(
             process_uploaded_file_with_progress,
@@ -619,6 +701,7 @@ async def process_uploaded_file_with_progress(
             "message": "Analysis complete!",
             "result": json_safe_result
         })
+        progress_store[job_id]["finished_at"] = time.monotonic()
         
         logger.info(f"Job {job_id} completed successfully")
         
@@ -662,6 +745,7 @@ async def process_uploaded_file_with_progress(
             "message": str(e),
             "error": str(e)
         })
+        progress_store[job_id]["finished_at"] = time.monotonic()
         # Clean up on error
         file_manager.cleanup_job(job_id)
         
@@ -673,6 +757,6 @@ async def process_uploaded_file_with_progress(
             "message": str(e),
             "error": str(e)
         })
+        progress_store[job_id]["finished_at"] = time.monotonic()
         # Clean up on error
         file_manager.cleanup_job(job_id)
-

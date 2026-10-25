@@ -51,7 +51,21 @@ class APIClient {
     };
 
     try {
-      const response = await fetch(url, config);
+      let response;
+      const canRetry = !config.method || ['GET', 'HEAD', 'OPTIONS'].includes(config.method.toUpperCase());
+      for (let attempt = 0; attempt < (canRetry ? 3 : 1); attempt += 1) {
+        try {
+          response = await fetch(url, config);
+        } catch (error) {
+          if (attempt === 2 || !canRetry) throw error;
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        if (![502, 503, 504].includes(response.status) || attempt === 2 || !canRetry) {
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
       
 
       
@@ -390,4 +404,3 @@ class APIClient {
 }
 
 export default new APIClient();
-
