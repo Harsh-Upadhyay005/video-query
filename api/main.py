@@ -8,7 +8,7 @@ import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -298,6 +298,12 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
+
+
+@app.head("/")
+async def root_head():
+    """Support platform probes that use HEAD on the root path."""
+    return Response(status_code=200)
 
 
 @app.get("/health")

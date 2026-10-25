@@ -9,6 +9,8 @@ from typing import Optional, Dict, Any
 from enum import Enum
 import asyncio
 import json
+from datetime import datetime, timezone
+import os
 import time
 import uuid
 
@@ -26,6 +28,7 @@ router = APIRouter()
 # Store for progress updates (in production, use Redis or database)
 progress_store = {}
 _JOB_RESULT_TTL_SECONDS = 60 * 60
+_STALE_JOB_SECONDS = int(os.getenv("STALE_JOB_SECONDS", str(35 * 60)))
 
 
 def _cleanup_expired_jobs() -> None:
@@ -64,6 +67,21 @@ def _persist_job_start(
             })
     except Exception as exc:
         logger.warning(f"Failed to persist job start {job_id}: {exc}")
+
+
+def _is_stale_processing_job(row: dict) -> bool:
+    """Detect jobs whose worker stopped before writing a terminal state."""
+    updated_at = row.get("updated_at") or row.get("created_at")
+    if not updated_at:
+        return False
+    try:
+        timestamp = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - timestamp).total_seconds() > _STALE_JOB_SECONDS
+    except (TypeError, ValueError):
+        logger.warning(f"[Status] Invalid timestamp for job {row.get('job_id')}: {updated_at}")
+        return False
 
 
 class LanguageEnum(str, Enum):
@@ -452,6 +470,30 @@ async def get_analysis_status(job_id: str):
                     "duration_seconds": row.get("duration_seconds"),
                 }
                 status = row.get("status", "processing")
+                if status == "processing" and _is_stale_processing_job(row):
+                    message = (
+                        "Analysis worker stopped before completion. "
+                        "Please submit the analysis again."
+                    )
+                    logger.warning(f"[Status] Marking stale job as failed: {job_id}")
+                    get_database_manager().save_analysis({
+                        "user_id": row.get("user_id", "guest"),
+                        "source_type": row.get("source_type", "video"),
+                        "source_ref": row.get("source_ref"),
+                        "language": row.get("language", "english"),
+                        "status": "failed",
+                        "error_message": message,
+                        "job_id": job_id,
+                    })
+                    return {
+                        "job_id": job_id,
+                        "status": "failed",
+                        "stage": "worker",
+                        "progress": 0,
+                        "message": message,
+                        "result": None,
+                        "error": message,
+                    }
                 if status == "processing":
                     return {
                         "job_id": job_id,

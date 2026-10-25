@@ -298,6 +298,7 @@ class SupabaseDatabaseManager:
                 "key_decisions": analysis_data.get("key_decisions"),
                 "open_questions": analysis_data.get("open_questions"),
                 "status": analysis_data.get("status", "completed"),
+                "error_message": analysis_data.get("error_message"),
                 "language": analysis_data.get("language", "english"),
                 "duration_seconds": analysis_data.get("duration_seconds"),
                 "job_id": analysis_data.get("job_id"),
