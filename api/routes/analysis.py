@@ -493,8 +493,8 @@ async def get_analysis_status(job_id: str):
         from core.supabase_database import get_database_manager
 
         if is_supabase_configured():
-            db = get_database_manager()
-            row = db.get_analysis_by_job_id(job_id)
+            db = await asyncio.to_thread(get_database_manager)
+            row = await asyncio.to_thread(db.get_analysis_by_job_id, job_id)
             if row:
                 # Rebuild a minimal result dict from the persisted row
                 transcript = row.get("transcript") or ""
@@ -524,7 +524,7 @@ async def get_analysis_status(job_id: str):
                         "Please submit the analysis again."
                     )
                     logger.warning(f"[Status] Marking stale job as failed: {job_id}")
-                    get_database_manager().save_analysis({
+                    await asyncio.to_thread(get_database_manager().save_analysis, {
                         "user_id": row.get("user_id", "guest"),
                         "source_type": row.get("source_type", "video"),
                         "source_ref": row.get("source_ref"),
